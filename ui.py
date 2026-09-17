@@ -62,36 +62,39 @@ def _read_full_config() -> dict:
 APP_VERSION  = "MARK LIV"
 APP_PROTOCOL = APP_VERSION.split()[-1]
 
-_DEFAULT_W, _DEFAULT_H = 980, 700
-_MIN_W,     _MIN_H     = 820, 580
-_LEFT_W  = 148
-_RIGHT_W = 340
+_DEFAULT_W, _DEFAULT_H = 1180, 760
+_MIN_W,     _MIN_H     = 980, 620
+_LEFT_W  = 176
+_RIGHT_W = 304
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 
 class C:
-    BG        = "#00060a"
-    PANEL     = "#010d14"
-    PANEL2    = "#010f18"
-    BORDER    = "#0d3347"
-    BORDER_B  = "#1a5c7a"
-    BORDER_A  = "#0f4060"
-    PRI       = "#00d4ff"
-    PRI_DIM   = "#007a99"
-    PRI_GHO   = "#001f2e"
-    ACC       = "#ff6b00"
-    ACC2      = "#ffcc00"
-    GREEN     = "#00ff88"
-    GREEN_D   = "#00aa55"
-    RED       = "#ff3355"
-    MUTED_C   = "#ff3366"
-    TEXT      = "#8ffcff"
-    TEXT_DIM  = "#3a8a9a"
-    TEXT_MED  = "#5ab8cc"
-    WHITE     = "#d8f8ff"
-    DARK      = "#000d14"
-    BAR_BG    = "#011520"
+    # Midnight glass with an icy cyan signal colour.  These values are shared
+    # by both the painted HUD and the Qt panels so the whole surface reads as
+    # one instrument instead of a collection of unrelated widgets.
+    BG        = "#061526"
+    PANEL     = "#0a2035"
+    PANEL2    = "#102c45"
+    BORDER    = "#1a4667"
+    BORDER_B  = "#55bed8"
+    BORDER_A  = "#2c7ea0"
+    PRI       = "#7de9ff"
+    PRI_DIM   = "#4d99bd"
+    PRI_GHO   = "#164766"
+    ACC       = "#b2f3e3"
+    ACC2      = "#a8d3ff"
+    GREEN     = "#75ffcf"
+    GREEN_D   = "#3cbf9a"
+    RED       = "#ff6685"
+    MUTED_C   = "#ff6f9c"
+    TEXT      = "#d6f6ff"
+    TEXT_DIM  = "#6996aa"
+    TEXT_MED  = "#9bc4d4"
+    WHITE     = "#e9fbff"
+    DARK      = "#071a2c"
+    BAR_BG    = "#14344d"
 
 
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed
@@ -827,6 +830,17 @@ class HudCanvas(QWidget):
         cx, cy = W / 2, H / 2
         fw = min(W, H)
 
+        # A broad, low-contrast wash gives the HUD the depth of the reference
+        # glass panels while keeping the animated centrepiece fully visible.
+        atmosphere = QLinearGradient(0, 0, W, H)
+        atmosphere.setColorAt(0.0, qcol("#0b2942"))
+        atmosphere.setColorAt(0.48, qcol(C.BG, 0))
+        atmosphere.setColorAt(1.0, qcol("#071d35"))
+        p.fillRect(self.rect(), QBrush(atmosphere))
+        p.setPen(QPen(qcol(C.BORDER, 110), 1))
+        p.drawLine(QLineF(0, 32, W, 32))
+        p.drawLine(QLineF(0, H - 34, W, H - 34))
+
         # grid dots — blitted from a cached layer; rebuilt only when the size
         # or the theme's ghost colour changes (so live re-theming still works).
         _gkey = (W, H, C.PRI_GHO)
@@ -943,9 +957,9 @@ class MetricBar(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        p.setBrush(QBrush(qcol(C.PANEL2)))
-        p.setPen(QPen(qcol(C.BORDER_A), 1))
-        p.drawRoundedRect(QRectF(1, 1, W - 2, H - 2), 4, 4)
+        p.setBrush(QBrush(qcol(C.PANEL2, 210)))
+        p.setPen(QPen(qcol(C.BORDER_A, 210), 1))
+        p.drawRoundedRect(QRectF(1, 1, W - 2, H - 2), 9, 9)
 
         bar_h   = 4
         bar_y   = H - bar_h - 5
@@ -2975,7 +2989,22 @@ class MainWindow(QMainWindow):
         self._customize_overlay: CustomizeOverlay | None = None
 
         central = QWidget()
-        central.setStyleSheet(f"background: {C.BG};")
+        central.setStyleSheet(f"""
+            QWidget {{
+                background: {C.BG};
+                color: {C.TEXT};
+                font-family: "Segoe UI", "Noto Sans", sans-serif;
+            }}
+            QToolTip {{
+                color: {C.WHITE};
+                background: {C.DARK};
+                border: 1px solid {C.BORDER_B};
+                padding: 5px 8px;
+            }}
+            QSplitter::handle {{
+                background: {C.BORDER};
+            }}
+        """)
         self.setCentralWidget(central)
 
         root = QVBoxLayout(central)
@@ -2998,7 +3027,10 @@ class MainWindow(QMainWindow):
 
         # Live camera container — replaces HUD when camera stream is active
         _cam_cont = QWidget()
-        _cam_cont.setStyleSheet("background: #000308;")
+        _cam_cont.setStyleSheet(f"""
+            background: {C.BG};
+            border: 1px solid {C.BORDER_A};
+        """)
         _cam_v = QVBoxLayout(_cam_cont)
         _cam_v.setContentsMargins(0, 0, 0, 0)
         _cam_v.setSpacing(0)
@@ -3038,11 +3070,11 @@ class MainWindow(QMainWindow):
         self._center_split = QSplitter(Qt.Orientation.Vertical)
         self._center_split.setStyleSheet(f"""
             QSplitter::handle {{
-                background: {C.BORDER};
-                height: 4px;
+                background: {C.BORDER_A};
+                height: 6px;
             }}
             QSplitter::handle:hover {{
-                background: {C.PRI_DIM};
+                background: {C.PRI};
             }}
         """)
         self._center_split.addWidget(self._hud_cam_stack)
@@ -3630,18 +3662,23 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QWidget:
         w = QWidget()
-        w.setFixedHeight(54)
-        w.setStyleSheet(f"background: {C.DARK}; border-bottom: 1px solid {C.BORDER_B};")
+        w.setFixedHeight(58)
+        w.setStyleSheet(f"""
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                        stop:0 {C.DARK}, stop:0.5 #0c2943,
+                                        stop:1 {C.DARK});
+            border-bottom: 1px solid {C.BORDER_B};
+        """)
         lay = QHBoxLayout(w)
-        lay.setContentsMargins(16, 0, 16, 0)
+        lay.setContentsMargins(18, 0, 18, 0)
 
         def _badge(txt, color=C.TEXT_MED):
             l = QLabel(txt)
-            l.setFont(QFont("Courier New", 8))
+            l.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
             l.setStyleSheet(f"color: {color}; background: transparent;")
             return l
 
-        lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
+        lay.addWidget(_badge("◈  " + APP_VERSION, C.PRI_DIM))
         lay.addSpacing(8)
         self._drawer_btn = QPushButton("⚙")
         self._drawer_btn.setFixedSize(26, 26)
@@ -3651,9 +3688,10 @@ class MainWindow(QMainWindow):
         self._drawer_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent; color: {C.TEXT_DIM};
-                border: 1px solid {C.BORDER}; border-radius: 4px;
+                background: rgba(10, 37, 59, 180);
+                border: 1px solid {C.BORDER_A}; border-radius: 7px;
             }}
-            QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}
+            QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}
             QPushButton:checked {{ color: {C.PRI}; border-color: {C.PRI}; background: {C.PRI_GHO}; }}
         """)
         self._drawer_btn.setCheckable(True)
@@ -3665,7 +3703,7 @@ class MainWindow(QMainWindow):
         _disp = self._assistant_name.upper()
         self._title_lbl = QLabel(_disp)
         self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._title_lbl.setFont(QFont("Courier New", 17, QFont.Weight.Bold))
+        self._title_lbl.setFont(QFont("Courier New", 18, QFont.Weight.Bold))
         self._title_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         mid.addWidget(self._title_lbl)
         _sub_text = ("A Friendly Assistant"
@@ -3681,7 +3719,7 @@ class MainWindow(QMainWindow):
 
         right_col = QVBoxLayout(); right_col.setSpacing(2)
         self._clock_lbl = QLabel("00:00:00")
-        self._clock_lbl.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
+        self._clock_lbl.setFont(QFont("Courier New", 15, QFont.Weight.Bold))
         self._clock_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         self._clock_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         right_col.addWidget(self._clock_lbl)
@@ -3700,15 +3738,18 @@ class MainWindow(QMainWindow):
     def _build_left_panel(self) -> QWidget:
         w = QWidget()
         w.setFixedWidth(_LEFT_W)
-        w.setStyleSheet(f"background: {C.DARK}; border-right: 1px solid {C.BORDER};")
+        w.setStyleSheet(f"""
+            background: rgba(6, 21, 38, 235);
+            border-right: 1px solid {C.BORDER_A};
+        """)
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 10, 8, 10)
-        lay.setSpacing(6)
+        lay.setContentsMargins(12, 14, 12, 14)
+        lay.setSpacing(8)
 
         hdr = QLabel("◈ SYS MONITOR")
         hdr.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         hdr.setStyleSheet(f"color: {C.PRI}; background: transparent; "
-                          f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 4px;")
+                          f"border-bottom: 1px solid {C.BORDER_A}; padding-bottom: 7px;")
         lay.addWidget(hdr)
         lay.addSpacing(2)
 
@@ -3726,7 +3767,7 @@ class MainWindow(QMainWindow):
 
         info_panel = QWidget()
         info_panel.setStyleSheet(
-            f"background: {C.PANEL2}; border: 1px solid {C.BORDER}; border-radius: 4px;"
+            f"background: rgba(16, 44, 69, 190); border: 1px solid {C.BORDER_A}; border-radius: 8px;"
         )
         ip_lay = QVBoxLayout(info_panel)
         ip_lay.setContentsMargins(6, 5, 6, 5)
@@ -3763,7 +3804,7 @@ class MainWindow(QMainWindow):
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(
                 f"color: {col}; background: {C.PANEL2};"
-                f"border: 1px solid {C.BORDER_A}; border-radius: 3px; padding: 4px;"
+                f"border: 1px solid {C.BORDER_A}; border-radius: 7px; padding: 7px;"
             )
             lay.addWidget(lbl)
 
@@ -3771,15 +3812,19 @@ class MainWindow(QMainWindow):
     def _build_right_panel(self) -> QWidget:
         w = QWidget()
         w.setFixedWidth(_RIGHT_W)
-        w.setStyleSheet(f"background: {C.DARK}; border-left: 1px solid {C.BORDER};")
+        w.setStyleSheet(f"""
+            background: rgba(6, 21, 38, 225);
+            border-left: 1px solid {C.BORDER_A};
+        """)
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(6)
+        lay.setContentsMargins(12, 12, 12, 12)
+        lay.setSpacing(8)
 
         def _sec(txt):
             l = QLabel(f"▸ {txt}")
             l.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
-            l.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+            l.setStyleSheet(f"color: {C.PRI}; background: transparent; "
+                            f"letter-spacing: 1px;")
             return l
 
         lay.addWidget(_sec("ACTIVITY LOG"))
@@ -3809,13 +3854,13 @@ class MainWindow(QMainWindow):
         lay.addLayout(self._build_input_row())
 
         self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
-        self._interrupt_btn.setFixedHeight(34)
+        self._interrupt_btn.setFixedHeight(38)
         self._interrupt_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
         self._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._interrupt_btn.setStyleSheet(f"""
             QPushButton {{
-                background: #140008; color: {C.MUTED_C};
-                border: 1px solid {C.MUTED_C}; border-radius: 3px;
+                background: rgba(45, 10, 29, 180); color: {C.MUTED_C};
+                border: 1px solid {C.MUTED_C}; border-radius: 8px;
             }}
             QPushButton:hover {{
                 background: #200010; border: 1px solid #ff6688;
@@ -3828,7 +3873,7 @@ class MainWindow(QMainWindow):
         lay.addWidget(self._interrupt_btn)
 
         self._mute_btn = QPushButton("🎙  MICROPHONE ACTIVE")
-        self._mute_btn.setFixedHeight(30)
+        self._mute_btn.setFixedHeight(36)
         self._mute_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
         self._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mute_btn.clicked.connect(self._toggle_mute)
@@ -4014,15 +4059,15 @@ class MainWindow(QMainWindow):
         self._quick_drawer.setGeometry(12, 54, _W, self._quick_drawer.sizeHint().height())
 
     def _build_input_row(self) -> QHBoxLayout:
-        row = QHBoxLayout(); row.setSpacing(5)
+        row = QHBoxLayout(); row.setSpacing(7)
         self._input = QLineEdit()
         self._input.setPlaceholderText("Type a command or question…")
         self._input.setFont(QFont("Courier New", 9))
-        self._input.setFixedHeight(30)
+        self._input.setFixedHeight(36)
         self._input.setStyleSheet(f"""
             QLineEdit {{
-                background: #000d14; color: {C.WHITE};
-                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 3px 7px;
+                background: rgba(7, 25, 43, 230); color: {C.WHITE};
+                border: 1px solid {C.BORDER_A}; border-radius: 8px; padding: 5px 10px;
             }}
             QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
         """)
@@ -4030,13 +4075,13 @@ class MainWindow(QMainWindow):
         row.addWidget(self._input)
 
         send = QPushButton("▸")
-        send.setFixedSize(30, 30)
+        send.setFixedSize(36, 36)
         send.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         send.setCursor(Qt.CursorShape.PointingHandCursor)
         send.setStyleSheet(f"""
             QPushButton {{
-                background: {C.PANEL}; color: {C.PRI};
-                border: 1px solid {C.PRI_DIM}; border-radius: 3px;
+                background: {C.PRI_GHO}; color: {C.PRI};
+                border: 1px solid {C.PRI_DIM}; border-radius: 8px;
             }}
             QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
         """)
@@ -4053,8 +4098,9 @@ class MainWindow(QMainWindow):
         w.setObjectName("ContentPanel")
         w.setStyleSheet(f"""
             QWidget#ContentPanel {{
-                background: {C.PANEL};
-                border-top: 1px solid {C.BORDER_B};
+                background: rgba(10, 32, 53, 235);
+                border: 1px solid {C.BORDER_A};
+                border-radius: 10px;
             }}
         """)
         w.hide()
@@ -4254,8 +4300,8 @@ class MainWindow(QMainWindow):
         col = C.PRI if primary else C.TEXT_MED
         b.setStyleSheet(f"""
             QPushButton {{
-                background: {C.PANEL2}; color: {col};
-                border: 1px solid {edge}; border-radius: 2px;
+                background: rgba(16, 44, 69, 210); color: {col};
+                border: 1px solid {edge}; border-radius: 7px;
                 padding: 3px 9px; text-align: left;
             }}
             QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI_DIM}; }}
@@ -4268,8 +4314,9 @@ class MainWindow(QMainWindow):
         w.setObjectName("QuizPanel")
         w.setStyleSheet(f"""
             QWidget#QuizPanel {{
-                background: {C.PANEL};
-                border-top: 1px solid {C.BORDER_B};
+                background: rgba(10, 32, 53, 235);
+                border: 1px solid {C.BORDER_A};
+                border-radius: 10px;
             }}
         """)
         w.hide()
@@ -4510,7 +4557,10 @@ class MainWindow(QMainWindow):
     def _build_footer(self) -> QWidget:
         w = QWidget()
         w.setFixedHeight(22)
-        w.setStyleSheet(f"background: {C.DARK}; border-top: 1px solid {C.BORDER};")
+        w.setStyleSheet(f"""
+            background: {C.DARK};
+            border-top: 1px solid {C.BORDER_A};
+        """)
         lay = QHBoxLayout(w); lay.setContentsMargins(14, 0, 14, 0)
 
         def _fl(txt, color=C.TEXT_MED):
