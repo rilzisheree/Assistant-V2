@@ -715,6 +715,28 @@ class HudCanvas(QWidget):
             p.drawEllipse(QRectF(cx - gr, cy - gr, gr * 2, gr * 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
 
+        # The reference uses a luminous, physical centrepiece rather than a
+        # thin technical outline. Draw this after the atmosphere so the glow
+        # remains visible beneath the orbit lines.
+        p.setPen(Qt.PenStyle.NoPen)
+        for gr, alpha in ((r * 1.05, 22), (r * 0.82, 34), (r * 0.48, 48)):
+            bloom = QRadialGradient(cx, cy, gr)
+            bloom.setColorAt(0.0, qcol(main.name(), alpha))
+            bloom.setColorAt(0.62, qcol(main.name(), max(1, alpha // 3)))
+            bloom.setColorAt(1.0, qcol(main.name(), 0))
+            p.setBrush(QBrush(bloom))
+            p.drawEllipse(QRectF(cx - gr, cy - gr, gr * 2, gr * 2))
+
+        core_r = r * 0.34
+        core = QRadialGradient(cx - core_r * 0.18, cy - core_r * 0.22, core_r * 1.25)
+        core.setColorAt(0.0, qcol(C.WHITE, 95))
+        core.setColorAt(0.22, qcol(main.name(), 72))
+        core.setColorAt(0.70, qcol(C.PANEL2, 180))
+        core.setColorAt(1.0, qcol(C.BG, 245))
+        p.setBrush(QBrush(core))
+        p.setPen(QPen(qcol(main.name(), 155), 2.5))
+        p.drawEllipse(QRectF(cx - core_r, cy - core_r, core_r * 2, core_r * 2))
+
         # 2. Frame marks at the corners of the whole canvas, not of the circle.
         #    They are what set the scale: the eye reads the reactor as filling
         #    the room rather than sitting in the middle of it.
@@ -741,9 +763,9 @@ class HudCanvas(QWidget):
         # 4. Two thin outer circles. Sparse on purpose — a dense ring reads as a
         #    grey band at this size, and restraint is what made the original
         #    look expensive.
-        for rr, a in ((1.00, 0.34), (0.93, 0.16)):
+        for rr, a in ((1.00, 0.68), (0.93, 0.32), (0.68, 0.24)):
             rad = r * rr
-            p.setPen(QPen(blend(main, a), 1))
+            p.setPen(QPen(blend(main, a), 2.0 if rr == 1.0 else 1.1))
             p.drawEllipse(QRectF(cx - rad, cy - rad, rad * 2, rad * 2))
 
         # 5. Long, sparse graduations: 24 majors reaching well in from the rim,
@@ -769,11 +791,11 @@ class HudCanvas(QWidget):
         rate = 1.0 + (1.9 if self.state in ("THINKING", "PROCESSING") else 0.0) \
                    + (1.2 if self.speaking else 0.0)
         for k, (rr, span, count, dirn, col, a, wid) in enumerate((
-                (0.955, 118, 2, +1, acc,  0.75, 2.0),
-                (0.845, 82,  3, -1, main, 0.38, 1.3),
-                (0.760, 150, 1, +1, acc,  0.45, 1.6),
-                (0.660, 64,  4, -1, main, 0.26, 1.1),
-                (0.545, 128, 2, +1, main, 0.30, 1.2))):
+                (0.955, 118, 2, +1, acc,  0.95, 4.5),
+                (0.845, 82,  3, -1, main, 0.64, 2.2),
+                (0.760, 150, 1, +1, acc,  0.72, 3.0),
+                (0.660, 64,  4, -1, main, 0.48, 1.8),
+                (0.545, 128, 2, +1, main, 0.52, 2.0))):
             rad = r * rr
             p.setPen(QPen(blend(col, a), wid))
             box = QRectF(cx - rad, cy - rad, rad * 2, rad * 2)
@@ -3083,9 +3105,17 @@ class MainWindow(QMainWindow):
         self._center_split.setStretchFactor(0, 3)
         self._center_split.setStretchFactor(1, 1)
         self._center_split.setCollapsible(0, False)
-        body.addWidget(self._center_split, stretch=5)
 
         self._right_panel = self._build_right_panel()
+        center_col = QWidget()
+        center_col.setStyleSheet("background: transparent;")
+        center_lay = QVBoxLayout(center_col)
+        center_lay.setContentsMargins(0, 0, 0, 0)
+        center_lay.setSpacing(0)
+        center_lay.addWidget(self._center_split, stretch=1)
+        center_lay.addWidget(self._build_command_dock(), stretch=0,
+                             alignment=Qt.AlignmentFlag.AlignHCenter)
+        body.addWidget(center_col, stretch=5)
         body.addWidget(self._right_panel, stretch=0)
 
         root.addLayout(body, stretch=1)
@@ -3850,8 +3880,11 @@ class MainWindow(QMainWindow):
         sep2.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
         lay.addWidget(sep2)
 
-        lay.addWidget(_sec("COMMAND INPUT"))
-        lay.addLayout(self._build_input_row())
+        # The command controls live in the centred glass dock under the HUD,
+        # matching the reference composition. They remain the same widgets
+        # and callbacks; only their visual placement changes.
+        self._command_label = _sec("COMMAND INPUT")
+        self._command_row = self._build_input_row()
 
         self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
         self._interrupt_btn.setFixedHeight(38)
@@ -3870,7 +3903,6 @@ class MainWindow(QMainWindow):
             }}
         """)
         self._interrupt_btn.clicked.connect(self._do_interrupt)
-        lay.addWidget(self._interrupt_btn)
 
         self._mute_btn = QPushButton("🎙  MICROPHONE ACTIVE")
         self._mute_btn.setFixedHeight(36)
@@ -3878,9 +3910,41 @@ class MainWindow(QMainWindow):
         self._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mute_btn.clicked.connect(self._toggle_mute)
         self._style_mute_btn()
-        lay.addWidget(self._mute_btn)
 
+        lay.addStretch(1)
         return w
+
+    def _build_command_dock(self) -> QWidget:
+        """Centered glass control rail below the animated HUD."""
+        dock = QWidget()
+        dock.setObjectName("CommandDock")
+        dock.setMinimumHeight(62)
+        dock.setMaximumWidth(760)
+        dock.setStyleSheet(f"""
+            QWidget#CommandDock {{
+                background: rgba(19, 54, 79, 225);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 12px;
+            }}
+        """)
+        lay = QHBoxLayout(dock)
+        lay.setContentsMargins(12, 9, 12, 9)
+        lay.setSpacing(9)
+
+        self._interrupt_btn.setFixedWidth(118)
+        self._interrupt_btn.setFixedHeight(40)
+        lay.addWidget(self._interrupt_btn)
+
+        command = QVBoxLayout()
+        command.setSpacing(2)
+        command.addWidget(self._command_label)
+        command.addLayout(self._command_row)
+        lay.addLayout(command, stretch=1)
+
+        self._mute_btn.setFixedWidth(166)
+        self._mute_btn.setFixedHeight(40)
+        lay.addWidget(self._mute_btn)
+        return dock
 
     def _build_quick_drawer(self) -> QWidget:
         """Floating overlay panel shown when the ⚙ header button is toggled."""
