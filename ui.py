@@ -72,33 +72,32 @@ _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 
 class C:
-    # Midnight glass with an icy cyan signal colour.  These values are shared
-    # by both the painted HUD and the Qt panels so the whole surface reads as
-    # one instrument instead of a collection of unrelated widgets.
-    BG        = "#061526"
-    PANEL     = "#0a2035"
-    PANEL2    = "#102c45"
-    BORDER    = "#1a4667"
-    BORDER_B  = "#55bed8"
-    BORDER_A  = "#2c7ea0"
-    PRI       = "#7de9ff"
-    PRI_DIM   = "#4d99bd"
-    PRI_GHO   = "#164766"
-    ACC       = "#b2f3e3"
-    ACC2      = "#a8d3ff"
-    GREEN     = "#75ffcf"
-    GREEN_D   = "#3cbf9a"
-    RED       = "#ff6685"
-    MUTED_C   = "#ff6f9c"
-    TEXT      = "#d6f6ff"
-    TEXT_DIM  = "#6996aa"
-    TEXT_MED  = "#9bc4d4"
-    WHITE     = "#e9fbff"
-    DARK      = "#071a2c"
-    BAR_BG    = "#14344d"
+    # Near-black glass with a cold, restrained blue signal colour. These
+    # values are shared by both the painted HUD and the Qt panels so the
+    # surface reads as one calm instrument instead of a neon dashboard.
+    BG        = "#03070d"
+    PANEL     = "#070d16"
+    PANEL2    = "#0b1422"
+    BORDER    = "#17283d"
+    BORDER_B  = "#365978"
+    BORDER_A  = "#23415c"
+    PRI       = "#b8cce0"
+    PRI_DIM   = "#6d8aa3"
+    PRI_GHO   = "#102238"
+    ACC       = "#dbe7f0"
+    ACC2      = "#7e9fba"
+    GREEN     = "#a5c1d1"
+    GREEN_D   = "#5d7d95"
+    RED       = "#d97783"
+    MUTED_C   = "#8f6474"
+    TEXT      = "#d4e0ea"
+    TEXT_DIM  = "#688096"
+    TEXT_MED  = "#98acbc"
+    WHITE     = "#f0f5f8"
+    DARK      = "#040910"
+    BAR_BG    = "#122235"
 
-
-# Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed
+# Keys tied to the accent colour — semantic error colour stays fixed.
 _HUE_LINKED = (
     "BG", "PANEL", "PANEL2", "BORDER", "BORDER_B", "BORDER_A",
     "PRI", "PRI_DIM", "PRI_GHO", "TEXT", "TEXT_DIM", "TEXT_MED",
@@ -115,29 +114,29 @@ _MONOCHROME_MODE = False
 DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 
 # Monochrome is a designed black-first palette rather than a colour filter.
-# Purple is reserved for depth, active states, and the core's energy.
+# Deep blue is reserved for depth, active states, and the core's energy.
 _MONOCHROME_PALETTE: dict[str, str] = {
-    "BG":       "#07060a",
-    "PANEL":    "#0d0b11",
-    "PANEL2":   "#15111b",
-    "BORDER":   "#251a2d",
-    "BORDER_B": "#4c3658",
-    "BORDER_A": "#34243f",
-    "PRI":      "#d2c5da",
-    "PRI_DIM":  "#8d789b",
-    "PRI_GHO":  "#21152b",
-    "ACC":      "#e7d9eb",
-    "ACC2":     "#b49ac0",
-    "GREEN":    "#c7b5ce",
-    "GREEN_D":  "#765f80",
-    "RED":      "#a87f9c",
-    "MUTED_C":  "#896579",
-    "TEXT":     "#ddd4e1",
-    "TEXT_DIM": "#786d7e",
-    "TEXT_MED": "#a99caf",
-    "WHITE":    "#f0eaf3",
-    "DARK":     "#09070c",
-    "BAR_BG":   "#1a1221",
+    "BG":       "#05070a",
+    "PANEL":    "#090d12",
+    "PANEL2":   "#111923",
+    "BORDER":   "#1b2a38",
+    "BORDER_B": "#40566a",
+    "BORDER_A": "#2c4356",
+    "PRI":      "#d0dbe4",
+    "PRI_DIM":  "#879baa",
+    "PRI_GHO":  "#172736",
+    "ACC":      "#e3ebf0",
+    "ACC2":     "#a0b4c2",
+    "GREEN":    "#b9cbd5",
+    "GREEN_D":  "#718897",
+    "RED":      "#aa7a83",
+    "MUTED_C":  "#876b74",
+    "TEXT":     "#dce5ea",
+    "TEXT_DIM": "#7a8d9b",
+    "TEXT_MED": "#aabac4",
+    "WHITE":    "#f3f6f8",
+    "DARK":     "#06090d",
+    "BAR_BG":   "#1a2936",
 }
 _MONOCHROME_HEXES = frozenset(value.lower() for value in _MONOCHROME_PALETTE.values())
 
@@ -186,7 +185,7 @@ def current_palette() -> dict[str, str]:
 
 
 def _monochrome_hex(hex_value: str) -> str:
-    """Map an arbitrary UI colour to restrained black-purple monochrome."""
+    """Map an arbitrary UI colour to restrained black-blue monochrome."""
     import colorsys
 
     color = QColor(hex_value)
@@ -209,9 +208,9 @@ def _monochrome_hex(hex_value: str) -> str:
         return f"#{level:02x}{level:02x}{min(255, level + 2):02x}"
 
     # Keep coloured source elements recognisable as active accents, but pull
-    # their hue into the same low-saturation violet family and cap brightness.
+    # their hue into the same low-saturation blue family and cap brightness.
     red, green, blue = colorsys.hsv_to_rgb(
-        0.77, min(0.30, max(0.12, saturation * 0.55)),
+        0.59, min(0.30, max(0.12, saturation * 0.55)),
         min(0.82, value * 0.92),
     )
     return "#{:02x}{:02x}{:02x}".format(
@@ -839,8 +838,8 @@ class HudCanvas(QWidget):
         # Wide, low-opacity aura: atmospheric depth without a neon halo.
         aura = QRadialGradient(cx - orb_r * 0.08, cy - orb_r * 0.12, orb_r * 1.35)
         aura.setColorAt(0.0, qcol(main.name(), 70 + int(amp * 24)))
-        aura.setColorAt(0.42, qcol("#3c5ca8", 34))
-        aura.setColorAt(0.78, qcol("#33205f", 18))
+        aura.setColorAt(0.42, qcol("#234c78", 34))
+        aura.setColorAt(0.78, qcol("#172746", 18))
         aura.setColorAt(1.0, qcol(C.BG, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(aura))
@@ -848,14 +847,14 @@ class HudCanvas(QWidget):
                              orb_r * 2.7, orb_r * 2.7))
 
         # The single glass volume. A cool highlight at upper-left and an
-        # indigo falloff at the lower-right make it read as dimensional.
+        # deep-blue falloff at the lower-right makes it read as dimensional.
         sphere = QRadialGradient(cx - orb_r * 0.28, cy - orb_r * 0.34,
                                  orb_r * 1.18)
         sphere.setColorAt(0.00, qcol(C.WHITE, 115))
         sphere.setColorAt(0.10, qcol(main.name(), 108))
-        sphere.setColorAt(0.34, qcol("#3d78b8", 92))
-        sphere.setColorAt(0.66, qcol("#241f60", 180))
-        sphere.setColorAt(0.88, qcol("#0c183e", 232))
+        sphere.setColorAt(0.34, qcol("#2c5c86", 92))
+        sphere.setColorAt(0.66, qcol("#172d4a", 180))
+        sphere.setColorAt(0.88, qcol("#07111e", 232))
         sphere.setColorAt(1.00, qcol(C.BG, 245))
         p.setBrush(QBrush(sphere))
         p.drawEllipse(orb)
@@ -870,7 +869,7 @@ class HudCanvas(QWidget):
         for k, (offset, width, colour, opacity) in enumerate((
             (-0.46, 1.7, main, 105),
             (0.03, 1.15, acc, 82),
-            (0.39, 1.35, qcol("#9d83ff"), 62),
+            (0.39, 1.35, qcol(C.ACC2), 62),
         )):
             path = QPainterPath()
             for i in range(31):
@@ -1020,7 +1019,7 @@ class HudCanvas(QWidget):
             px = cx + math.cos(angle) * orb_r * (radial + wobble)
             py = cy + math.sin(angle * 1.21) * orb_r * (radial * 0.72 + wobble)
             if ((px - cx) / orb_r) ** 2 + ((py - cy) / orb_r) ** 2 <= 0.88:
-                col = acc if i % 7 == 0 else (main if i % 3 else qcol("#9d83ff"))
+                col = acc if i % 7 == 0 else (main if i % 3 else qcol(C.ACC2))
                 dot = mix(col, 0.68)
                 dot.setAlpha(48 + int(92 * (0.5 + 0.5 * math.sin(seed + t * motion))))
                 size = 0.55 + (i % 4) * 0.30
@@ -1214,7 +1213,7 @@ class HudCanvas(QWidget):
             p.drawLine(QLineF(line_x, card_y + card_h * 0.5,
                               anchor_x, anchor_y))
 
-            card = qcol("#0b2037")
+            card = qcol(C.PANEL2)
             card.setAlpha(164)
             p.setBrush(QBrush(card))
             border = mix(main, 0.32)
@@ -1423,7 +1422,7 @@ class HudCanvas(QWidget):
         # A broad, low-contrast wash gives the HUD the depth of the reference
         # glass panels while keeping the animated centrepiece fully visible.
         atmosphere = QLinearGradient(0, 0, W, H)
-        atmosphere.setColorAt(0.0, qcol("#0b2942"))
+        atmosphere.setColorAt(0.0, qcol(C.PRI_GHO))
         atmosphere.setColorAt(0.48, qcol(C.BG, 0))
         atmosphere.setColorAt(1.0, qcol("#071d35"))
         p.fillRect(self.rect(), QBrush(atmosphere))
@@ -1680,12 +1679,12 @@ class LogWidget(QTextEdit):
             QTimer.singleShot(20, self._next)
 
 _FILE_ICONS = {
-    "image":   ("🖼", "#00d4ff"), "video":   ("🎬", "#ff6b00"),
-    "audio":   ("🎵", "#cc44ff"), "pdf":     ("📄", "#ff4444"),
-    "word":    ("📝", "#4488ff"), "excel":   ("📊", "#44bb44"),
-    "code":    ("💻", "#ffcc00"), "archive": ("📦", "#ff8844"),
-    "pptx":    ("📊", "#ff6622"), "text":    ("📃", "#aaaaaa"),
-    "data":    ("🔧", "#88ddff"), "unknown": ("📎", "#888888"),
+    "image":   ("🖼", "#8faec4"), "video":   ("🎬", "#728aa2"),
+    "audio":   ("🎵", "#8d8bad"), "pdf":     ("📄", "#b97882"),
+    "word":    ("📝", "#829db7"), "excel":   ("📊", "#759e8c"),
+    "code":    ("💻", "#9eb0bf"), "archive": ("📦", "#9b836f"),
+    "pptx":    ("📊", "#a8877e"), "text":    ("📃", "#a4adb5"),
+    "data":    ("🔧", "#7ea6bd"), "unknown": ("📎", "#78838d"),
 }
 _EXT_TO_CAT = {
     **dict.fromkeys(["jpg","jpeg","png","gif","webp","bmp","tiff","svg","ico"], "image"),
@@ -1812,7 +1811,7 @@ class _DropCanvas(QWidget):
         pad  = 6
         rect = QRectF(pad, pad, W - pad * 2, H - pad * 2)
 
-        bg_col = qcol("#001a24" if z._drag_over else ("#001218" if z._hovering else C.PANEL))
+        bg_col = qcol("#102238" if z._drag_over else ("#0a1522" if z._hovering else C.PANEL))
         p.setBrush(QBrush(bg_col)); p.setPen(Qt.PenStyle.NoPen)
         p.drawRoundedRect(rect, 6, 6)
 
@@ -1845,7 +1844,7 @@ class _DropCanvas(QWidget):
         p.drawText(QRectF(0, cy + 8, W, 16), Qt.AlignmentFlag.AlignCenter,
                    "Drop file here  or  Click to Browse")
         p.setFont(QFont("Courier New", 7))
-        p.setPen(QPen(qcol("#1a4a5a"), 1))
+        p.setPen(QPen(qcol(C.TEXT_DIM), 1))
         p.drawText(QRectF(0, cy + 24, W, 14), Qt.AlignmentFlag.AlignCenter,
                    "Images · Video · Audio · PDF · Docs · Code · Data")
 
@@ -1886,7 +1885,7 @@ class _DropCanvas(QWidget):
                    f"{ext_str}  ·  {size_str}")
 
         p.setFont(QFont("Courier New", 6))
-        p.setPen(QPen(qcol("#1e5c6a"), 1))
+        p.setPen(QPen(qcol(C.TEXT_DIM), 1))
         par = str(path.parent)
         if len(par) > 42: par = "…" + par[-41:]
         p.drawText(QRectF(tx, H * 0.18 + 34, tw, 12),
@@ -2020,7 +2019,7 @@ class SetupOverlay(QWidget):
         self._key_input.setFixedHeight(32)
         self._key_input.setStyleSheet(f"""
             QLineEdit {{
-                background: #000d12; color: {C.TEXT};
+                background: {C.DARK}; color: {C.TEXT};
                 border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px;
             }}
             QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
@@ -2070,7 +2069,7 @@ class SetupOverlay(QWidget):
 
     def _sel(self, key: str):
         self._sel_os = key
-        pal = {"windows":(C.PRI,"#001a22"),"mac":(C.ACC2,"#1a1400"),"linux":(C.GREEN,"#001a0d")}
+        pal = {"windows":(C.PRI,C.PRI_GHO),"mac":(C.ACC2,C.PRI_GHO),"linux":(C.GREEN,C.PRI_GHO)}
         for k, btn in self._os_btns.items():
             if k == key:
                 fg, bg = pal[k]
@@ -2083,7 +2082,7 @@ class SetupOverlay(QWidget):
             else:
                 btn.setStyleSheet(f"""
                     QPushButton {{
-                        background: #000d12; color: {C.TEXT_DIM};
+                        background: {C.DARK}; color: {C.TEXT_DIM};
                         border: 1px solid {C.BORDER}; border-radius: 3px;
                     }}
                     QPushButton:hover {{ color: {C.TEXT}; border: 1px solid {C.BORDER_B}; }}
@@ -2222,7 +2221,7 @@ class CustomizeOverlay(QWidget):
             w.setStyleSheet(f"color: {color}; background: transparent;")
             return w
 
-        _fs = (f"QLineEdit {{ background: #000d12; color: {C.TEXT}; "
+        _fs = (f"QLineEdit {{ background: {C.DARK}; color: {C.TEXT}; "
                f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
                f"QLineEdit:focus {{ border: 1px solid {C.PRI}; }}")
 
@@ -2338,7 +2337,7 @@ class CustomizeOverlay(QWidget):
         self._wheel.hue_committed.connect(self._on_wheel_commit)
 
         self._hex_input = QLineEdit(self._sel_color)
-        self._hex_input.setPlaceholderText("#00d4ff   (custom hex colour)")
+        self._hex_input.setPlaceholderText("#b8cce0   (custom hex colour)")
         self._hex_input.setFont(QFont("Courier New", 10))
         self._hex_input.setFixedHeight(28)
         self._hex_input.setStyleSheet(_fs)
@@ -2536,10 +2535,10 @@ class PluginManagerOverlay(QWidget):
             btn.setText("ON")
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: #001a08; color: {C.GREEN};
+                    background: {C.PRI_GHO}; color: {C.GREEN};
                     border: 1px solid {C.GREEN_D}; border-radius: 3px;
                 }}
-                QPushButton:hover {{ background: #002010; }}
+                QPushButton:hover {{ background: {C.BORDER}; }}
             """)
         else:
             btn.setText("OFF")
@@ -2700,10 +2699,10 @@ class AudioDeviceOverlay(_HudOverlay):
         lay.addWidget(sep)
 
         _combo_css = (
-            f"QComboBox {{ background: #000d12; color: {C.TEXT}; "
+            f"QComboBox {{ background: {C.DARK}; color: {C.TEXT}; "
             f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
             f"QComboBox:hover {{ border-color: {C.BORDER_B}; }}"
-            f"QComboBox QAbstractItemView {{ background: #000d12; color: {C.TEXT}; "
+            f"QComboBox QAbstractItemView {{ background: {C.DARK}; color: {C.TEXT}; "
             f"selection-background-color: {C.PRI_GHO}; border: 1px solid {C.BORDER}; }}"
         )
 
@@ -3101,7 +3100,7 @@ class PluginSettingsOverlay(QWidget):
         self._status_labels: dict[str, QLabel] = {} # namespace -> status QLabel
         self._test_done.connect(self._on_test_done)
 
-        self._fs = (f"QLineEdit {{ background: #000d12; color: {C.TEXT}; "
+        self._fs = (f"QLineEdit {{ background: {C.DARK}; color: {C.TEXT}; "
                     f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
                     f"QLineEdit:focus {{ border: 1px solid {C.PRI}; }}")
 
@@ -3198,9 +3197,9 @@ class PluginSettingsOverlay(QWidget):
                 w.setFont(QFont("Courier New", 9))
                 w.setFixedHeight(30)
                 w.setStyleSheet(
-                    f"QComboBox {{ background: #000d12; color: {C.TEXT}; "
+                    f"QComboBox {{ background: {C.DARK}; color: {C.TEXT}; "
                     f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 2px 8px; }}"
-                    f"QComboBox QAbstractItemView {{ background: #000d12; color: {C.TEXT}; "
+                    f"QComboBox QAbstractItemView {{ background: {C.DARK}; color: {C.TEXT}; "
                     f"selection-background-color: {C.PRI_GHO}; }}")
                 if stored is not None:
                     w.setCurrentText(str(stored))
@@ -3236,7 +3235,7 @@ class PluginSettingsOverlay(QWidget):
             ab.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
             ab.setCursor(Qt.CursorShape.PointingHandCursor)
             ab.setStyleSheet(f"""
-                QPushButton {{ background: #00091a; color: {C.PRI};
+                QPushButton {{ background: {C.DARK}; color: {C.PRI};
                     border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}
                 QPushButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
             """)
@@ -3485,7 +3484,7 @@ class RemoteKeyOverlay(QWidget):
             self._qr_label.setText("pip install\nqrcode[pil]")
             self._qr_label.setFont(QFont("Courier New", 8))
             self._qr_label.setStyleSheet(
-                "color: #888; background: white; border-radius: 10px; padding: 4px;"
+            f"color: {C.TEXT_DIM}; background: {C.WHITE}; border-radius: 10px; padding: 4px;"
             )
         except Exception:
             self._qr_label.setText(url[:28])
@@ -3507,8 +3506,8 @@ class RemoteKeyOverlay(QWidget):
         self._key_lbl.setText("CONNECTED")
         self._key_lbl.setStyleSheet(f"""
             color: {C.GREEN};
-            background: rgba(34,197,94,0.08);
-            border: 2px solid rgba(34,197,94,0.4);
+            background: {C.PRI_GHO};
+            border: 2px solid {C.BORDER_A};
             border-radius: 8px;
             padding: 6px 4px;
             letter-spacing: 4px;
@@ -3516,7 +3515,7 @@ class RemoteKeyOverlay(QWidget):
         self._qr_label.setText("✓")
         self._qr_label.setFont(QFont("Courier New", 54, QFont.Weight.Bold))
         self._qr_label.setStyleSheet(
-            "color: #00ff88; background: #001a0d; border-radius: 10px;"
+            f"color: {C.GREEN}; background: {C.PRI_GHO}; border-radius: 10px;"
         )
         self._timer_lbl.setText("Phone connected — JARVIS ready")
         self._timer_lbl.setStyleSheet(f"color: {C.GREEN}; background: transparent;")
@@ -4483,7 +4482,7 @@ class MainWindow(QMainWindow):
         w.setFixedHeight(58)
         w.setStyleSheet(f"""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                        stop:0 {C.DARK}, stop:0.5 #0c2943,
+                                        stop:0 {C.DARK}, stop:0.5 {C.PRI_GHO},
                                         stop:1 {C.DARK});
             border-bottom: 1px solid {C.BORDER_B};
         """)
@@ -4753,7 +4752,7 @@ class MainWindow(QMainWindow):
         """Floating overlay panel shown when the ⚙ header button is toggled."""
         _BTN_STYLE_PRI = f"""
             QPushButton {{
-                background: #00091a; color: {C.PRI};
+                background: {C.DARK}; color: {C.PRI};
                 border: 1px solid {C.PRI_DIM}; border-radius: 3px;
                 text-align: left; padding: 0 8px;
             }}
@@ -4984,7 +4983,7 @@ class MainWindow(QMainWindow):
                 border: none; border-radius: 14px;
             }}
             QPushButton:hover {{
-                background: rgba(125, 233, 255, 35);
+                background: {C.PRI_GHO};
                 color: {C.WHITE};
             }}
         """)
@@ -5613,10 +5612,10 @@ class MainWindow(QMainWindow):
             self._autostart_btn.setText("◉  AUTO-START: ON")
             self._autostart_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: #001a08; color: {C.GREEN};
+                    background: {C.PRI_GHO}; color: {C.GREEN};
                     border: 1px solid {C.GREEN_D}; border-radius: 3px;
                 }}
-                QPushButton:hover {{ background: #002010; }}
+                QPushButton:hover {{ background: {C.BORDER}; }}
             """)
         else:
             self._autostart_btn.setText("◉  AUTO-START: OFF")
@@ -5663,10 +5662,10 @@ class MainWindow(QMainWindow):
             return
         st = self._wake_state()
         _on = f"""
-            QPushButton {{ background: #001a08; color: {C.GREEN};
+            QPushButton {{ background: {C.PRI_GHO}; color: {C.GREEN};
                 border: 1px solid {C.GREEN_D}; border-radius: 3px;
                 text-align: left; padding: 0 8px; }}
-            QPushButton:hover {{ background: #002010; }}"""
+            QPushButton:hover {{ background: {C.BORDER}; }}"""
         _off = f"""
             QPushButton {{ background: transparent; color: {C.TEXT_DIM};
                 border: 1px solid {C.BORDER}; border-radius: 3px;
@@ -5695,10 +5694,10 @@ class MainWindow(QMainWindow):
         from core.hotkey import chord_label
         from memory.config_manager import get_push_to_talk_enabled
         _on = f"""
-            QPushButton {{ background: #001a08; color: {C.GREEN};
+            QPushButton {{ background: {C.PRI_GHO}; color: {C.GREEN};
                 border: 1px solid {C.GREEN_D}; border-radius: 3px;
                 text-align: left; padding: 0 8px; }}
-            QPushButton:hover {{ background: #002010; }}"""
+            QPushButton:hover {{ background: {C.BORDER}; }}"""
         _off = f"""
             QPushButton {{ background: transparent; color: {C.TEXT_DIM};
                 border: 1px solid {C.BORDER}; border-radius: 3px;
@@ -5859,11 +5858,11 @@ class MainWindow(QMainWindow):
             self._brief_btn.setText("☀  MORNING BRIEF: ON")
             self._brief_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: #001a08; color: {C.GREEN};
+                    background: {C.PRI_GHO}; color: {C.GREEN};
                     border: 1px solid {C.GREEN_D}; border-radius: 3px;
                     text-align: left; padding: 0 8px;
                 }}
-                QPushButton:hover {{ background: #002010; }}
+                QPushButton:hover {{ background: {C.BORDER}; }}
             """)
         else:
             self._brief_btn.setText("☀  MORNING BRIEF: OFF")
@@ -6162,11 +6161,11 @@ class MainWindow(QMainWindow):
             self._mute_btn.setText("MIC ACTIVE")
             self._mute_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: rgba(83, 205, 164, 42); color: {C.GREEN};
-                    border: 1px solid rgba(117, 255, 207, 150);
+                    background: {C.PRI_GHO}; color: {C.GREEN};
+                    border: 1px solid {C.BORDER_B};
                     border-radius: 16px; padding: 0 10px;
                 }}
-                QPushButton:hover {{ background: rgba(83, 205, 164, 80); }}
+                QPushButton:hover {{ background: {C.BORDER}; }}
             """)
 
     def _send(self):

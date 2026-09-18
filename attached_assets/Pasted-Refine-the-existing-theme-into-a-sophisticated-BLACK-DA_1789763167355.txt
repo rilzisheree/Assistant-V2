@@ -1,0 +1,180 @@
+Refine the existing theme into a sophisticated **BLACK + DARK BLUE** visual system.
+
+IMPORTANT:
+
+* Do NOT redesign the interface.
+* Do NOT change functionality, backend logic, commands, APIs, or behavior.
+* Preserve the current layout, orb, system panels, command bar, animations, and interactions.
+* Only modify the visual color system.
+* Keep everything compact, smooth, premium, and futuristic.
+
+### COLOR DIRECTION
+
+The interface should be predominantly:
+
+**BLACK + VERY DARK NAVY + SUBTLE BLUE**
+
+The background should remain almost completely black.
+
+Use dark blue as an atmospheric accent rather than making the entire interface blue.
+
+The blue should feel:
+
+* Deep
+* Cold
+* Smooth
+* Sophisticated
+* Technical
+* Subtle
+
+Avoid bright cyan and avoid excessive neon.
+
+### COLOR HIERARCHY
+
+**Background**
+→ Near-black
+
+**Main UI surfaces**
+→ Black / extremely dark navy
+
+**Secondary surfaces**
+→ Very dark blue-black
+
+**Borders**
+→ Subtle dark navy
+
+**Primary text**
+→ Soft white
+
+**Secondary text**
+→ Cool muted gray
+
+**Active elements**
+→ Soft white with subtle blue accents
+
+**Telemetry**
+→ White and restrained blue
+
+**Core**
+→ Black with deep blue internal energy
+
+**Glow**
+→ Very subtle dark-blue atmospheric glow
+
+The interface should still appear mostly BLACK when viewed normally.
+
+The dark blue should become visible mainly through:
+
+* Highlights
+* Edges
+* Active states
+* Core illumination
+* Tiny telemetry indicators
+* Subtle gradients
+* Reflections
+* Ambient glow
+
+### SYSTEM PANELS
+
+Apply this same black/dark-blue visual language to ALL system panels and telemetry.
+
+This includes:
+
+LUA ONLINE
+LATENCY
+LIVE
+CPU
+MEM
+GPU
+NET
+TMP
+and every other status indicator.
+
+Do not leave random blue/cyan styling from the previous theme.
+
+Instead, unify everything into the new palette.
+
+Use:
+
+* White → primary information
+* Dark blue → structural accents
+* Subtle blue → active indicators
+* Deep navy → panel surfaces
+* Soft blue glow → active/processing states
+
+Avoid bright cyan.
+
+### AI CORE
+
+Make the central orb the primary source of blue illumination.
+
+Keep the core itself mostly dark.
+
+Inside the core use:
+
+* Deep navy layers
+* Dark blue energy
+* Subtle blue highlights
+* Fine blue particles
+* Blue edge lighting
+* Very soft blue bloom
+
+The core should NOT become a bright blue sphere.
+
+It should look like a **dark advanced AI processor containing a controlled blue energy source**.
+
+### ANIMATIONS
+
+Keep the existing subtle movement around the orb.
+
+The small system panels should remain close to the orb and move only a few pixels.
+
+They should feel physically connected to the core.
+
+When the AI is processing:
+
+* Blue illumination can become slightly stronger
+* Telemetry can subtly brighten
+* Tiny indicators can animate
+* The core can intensify slightly
+
+When idle:
+
+* Blue illumination should become extremely subtle
+* The interface should return to a calm black appearance
+
+### PROJECT: ZERO
+
+Keep **Project: Zero** precisely centered at the top.
+
+Keep the futuristic typography.
+
+Primary text should remain soft white.
+
+A very subtle dark-blue glow or accent can be used, but do not make the title bright blue.
+
+### OVERALL AESTHETIC
+
+The final interface should feel like:
+
+**BLACK**
+**DARK NAVY**
+**DEEP BLUE**
+**SOFT WHITE**
+**SUBTLE BLUE LIGHT**
+**MINIMAL**
+**PREMIUM**
+**FUTURISTIC**
+**CALM**
+
+Think of a sophisticated AI operating system in a dark room with a faint blue energy source.
+
+NOT cyberpunk.
+
+NOT neon.
+
+NOT a generic blue dashboard.
+
+NOT a bright sci-fi HUD.
+
+The interface should feel **expensive, restrained, intelligent, and alive.**
