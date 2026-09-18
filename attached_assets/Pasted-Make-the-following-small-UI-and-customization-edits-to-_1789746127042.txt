@@ -1,0 +1,114 @@
+Make the following small UI and customization edits to the existing AI Assistant app.
+
+IMPORTANT:
+
+* Do NOT redesign the interface again.
+* Do NOT change the existing layout beyond the specific changes listed below.
+* Do NOT remove or break any existing functionality.
+* Do NOT modify commands, backend logic, APIs, event handling, or assistant behavior.
+* This is strictly a UI/text/settings customization update.
+
+### 1. BLACK & WHITE MODE
+
+Add a new option inside the existing **Customize Assistant** settings.
+
+Setting name:
+**Monochrome Mode**
+
+Description:
+**Switch the entire interface between the current color theme and a pure black-and-white theme.**
+
+When enabled:
+
+* Convert the entire UI to a black-and-white/monochrome appearance.
+* Remove colored accents and colored glows.
+* Preserve the existing UI structure, effects, animations, transparency, and visual hierarchy.
+* Use different shades of black, white, and gray to maintain depth.
+* Do NOT make everything flat white.
+* The AI core should remain visually detailed and dimensional using grayscale lighting and contrast.
+
+When disabled:
+
+* Return to the existing default color appearance exactly as it currently works.
+
+The setting must persist when the application is restarted.
+
+### 2. REMOVE "BY FAITHMAKES"
+
+Remove the **"By Faithmakes"** text from the bottom-right corner completely.
+
+Do not replace it with anything.
+
+### 3. REMOVE KEYBOARD HINTS
+
+Remove the following text from the bottom-left:
+
+**[F4] Mute**
+
+**[F11] Fullscreen**
+
+Remove only their visible UI labels.
+
+Do NOT remove or disable the actual F4 mute or F11 fullscreen functionality.
+
+### 4. 24-HOUR CLOCK
+
+Change the clock in the top-right corner to use a **24-hour format**.
+
+Example:
+
+Instead of:
+**6:42 PM**
+
+Display:
+**18:42**
+
+Instead of:
+**9:05 AM**
+
+Display:
+**09:05**
+
+Keep the existing clock position, styling, size, and appearance.
+
+Only change the time format.
+
+### 5. TOP-LEFT PROJECT LABEL
+
+Remove:
+
+**Mark LIV**
+
+Replace it with:
+
+**Project: Zero**
+
+Keep it in the exact same general position and preserve the existing visual styling.
+
+### 6. TOP-CENTER ASSISTANT LABEL
+
+Currently the top-center displays:
+
+**Name - Personal AI Assistant**
+
+Remove that text completely and replace it with:
+
+**Project: Zero**
+
+Keep the same position, typography, spacing, and general styling.
+
+### IMPORTANT CONSISTENCY RULE
+
+There should now be two visible "Project: Zero" references:
+
+TOP-LEFT:
+**Project: Zero**
+
+TOP-CENTER:
+**Project: Zero**
+
+Make sure they use the existing interface typography and do not look like two unrelated elements.
+
+Do not add any additional labels, panels, widgets, or decorative elements.
+
+This should feel like a subtle refinement of the existing interface, not a new redesign.
