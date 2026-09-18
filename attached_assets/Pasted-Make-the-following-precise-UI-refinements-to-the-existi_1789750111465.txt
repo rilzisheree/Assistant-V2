@@ -1,0 +1,167 @@
+Make the following precise UI refinements to the existing AI Assistant interface.
+
+IMPORTANT:
+
+* Do NOT redesign the interface.
+* Do NOT change the existing functionality, backend, commands, APIs, or behavior.
+* Only make the visual/layout changes listed below.
+* Preserve the current orb, command bar, activity system, and overall design.
+* Keep the interface compact and modern.
+
+### 1. PERFECTLY CENTER "PROJECT: ZERO"
+
+The **Project: Zero** text at the top-center is currently slightly shifted to the right.
+
+Move it slightly toward the LEFT until it is mathematically/visually centered relative to the application's full window.
+
+Do not simply center it relative to another UI element — center it relative to the actual application viewport.
+
+Also give **Project: Zero** a more distinctive futuristic typeface.
+
+Font direction:
+
+* Clean
+* Modern
+* Technical
+* Slightly futuristic
+* Thin/medium weight
+* Elegant
+* Not overly sci-fi
+* Not decorative or difficult to read
+
+Keep the text subtle and premium.
+
+Do NOT make it significantly larger.
+
+### 2. REDESIGN MONOCHROME MODE — CHATGPT-STYLE
+
+The current Monochrome Mode does not look good enough.
+
+Completely refine the visual treatment of the monochrome option so it resembles the **clean neutral visual language of ChatGPT's dark interface**, while still preserving the unique Project Zero identity.
+
+When Monochrome Mode is enabled:
+
+Use a restrained grayscale palette consisting primarily of:
+
+* Near-black
+* Dark charcoal
+* Medium gray
+* Light gray
+* Soft white
+
+Avoid pure white everywhere.
+
+The goal is NOT:
+"Turn every colored element into bright white."
+
+The goal is:
+"Convert the entire interface into a sophisticated neutral grayscale system."
+
+Use grayscale contrast to create hierarchy.
+
+For example:
+
+* Background → near-black
+* Secondary surfaces → dark charcoal
+* Borders → subtle dark gray
+* Primary text → soft white
+* Secondary text → muted gray
+* Active elements → white/light gray
+* Inactive elements → darker gray
+* Glow → soft neutral white/gray
+* Core lighting → grayscale
+
+The result should feel calm, clean, minimal, and premium like ChatGPT's dark UI.
+
+Keep the existing animations, transparency, depth, and visual effects, but convert their colors intelligently into grayscale.
+
+Do NOT flatten the interface.
+
+### 3. REMOVE ALL BLUE ACCENTS IN MONOCHROME MODE
+
+There are still blue elements in the smaller system panels such as:
+
+**LUA ONLINE**
+**LATENCY**
+**LIVE**
+and similar system/status indicators.
+
+These must ALSO change when Monochrome Mode is enabled.
+
+There should be ZERO blue/cyan colored UI remaining in monochrome mode.
+
+Convert:
+
+* Blue text → white/light gray
+* Blue borders → gray/white
+* Blue indicators → white/light gray
+* Blue glow → subtle neutral white glow
+* Blue progress bars → grayscale
+* Blue dots → white/light gray
+* Blue telemetry → grayscale
+
+Search the entire interface for color-specific accents and make sure none of the old blue/cyan styling remains active in Monochrome Mode.
+
+This includes tiny indicators that may be easy to overlook.
+
+### 4. ORBITING SYSTEM PANELS
+
+The small system/status panels around the orb should have a very subtle amount of movement.
+
+They should feel like they are **attached to / orbiting around the AI core**, rather than being completely static.
+
+However, keep the movement extremely small.
+
+The panels should:
+
+* Stay close to their original positions
+* Follow the orb's general geometry
+* Move only a few pixels
+* Have extremely subtle floating/orbiting motion
+* Move smoothly and slowly
+* Never drift far away from the orb
+* Never overlap the core
+* Never interfere with the command bar
+
+Think:
+
+**tiny controlled positional movement**
+
+NOT:
+
+**large floating HUD panels**
+
+The movement should be subtle enough that the user notices that the interface feels alive before they consciously notice the panels moving.
+
+The panels should maintain their relative positioning around the orb.
+
+### 5. IMPORTANT — PRESERVE THE CURRENT DESIGN
+
+Do not add new panels.
+
+Do not add large rings.
+
+Do not add giant HUD elements.
+
+Do not increase spacing.
+
+Do not make the interface busier.
+
+The desired result is:
+
+**Project Zero**
+→ precisely centered
+
+**Central AI Core**
+→ remains the visual centerpiece
+
+**Small telemetry/status panels**
+→ tightly attached to the orb with subtle movement
+
+**Bottom command interface**
+→ unchanged
+
+**Monochrome Mode**
+→ sophisticated ChatGPT-inspired neutral grayscale
+
+Everything should feel like one cohesive operating system rather than separate UI components.

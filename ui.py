@@ -114,6 +114,33 @@ _MONOCHROME_MODE = False
 
 DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 
+# Monochrome is a designed palette rather than a colour filter.  The values
+# keep the existing depth hierarchy while avoiding the blue cast produced by
+# luminance-converting the original midnight palette.
+_MONOCHROME_PALETTE: dict[str, str] = {
+    "BG":       "#0b0d0f",
+    "PANEL":    "#121416",
+    "PANEL2":   "#1c1f22",
+    "BORDER":   "#2a2e32",
+    "BORDER_B": "#565c62",
+    "BORDER_A": "#3a3f45",
+    "PRI":      "#d7dadd",
+    "PRI_DIM":  "#90979e",
+    "PRI_GHO":  "#252a2f",
+    "ACC":      "#f1f2f3",
+    "ACC2":     "#c2c7cc",
+    "GREEN":    "#e2e4e7",
+    "GREEN_D":  "#8c9298",
+    "RED":      "#b7bbc0",
+    "MUTED_C":  "#8c9298",
+    "TEXT":     "#e4e6e8",
+    "TEXT_DIM": "#7c8288",
+    "TEXT_MED": "#aab0b6",
+    "WHITE":    "#f4f5f6",
+    "DARK":     "#0f1113",
+    "BAR_BG":   "#252a2e",
+}
+
 
 def apply_ui_accent(accent_hex: str) -> bool:
     """
@@ -189,15 +216,15 @@ def _grayscale_stylesheet(stylesheet: str) -> str:
 
 
 def apply_ui_theme(accent_hex: str, monochrome: bool) -> bool:
-    """Reset the palette, apply the selected accent, then optionally desaturate it."""
+    """Reset the palette, apply the selected accent, then optionally use mono."""
     global _MONOCHROME_MODE
     for key, value in _COLOR_DEFAULTS.items():
         setattr(C, key, value)
     if not apply_ui_accent(accent_hex or DEFAULT_UI_COLOR):
         return False
     if monochrome:
-        for key in _COLOR_KEYS:
-            setattr(C, key, _grayscale_hex(getattr(C, key)))
+        for key, value in _MONOCHROME_PALETTE.items():
+            setattr(C, key, value)
     _MONOCHROME_MODE = monochrome
     return True
 
@@ -817,7 +844,7 @@ class HudCanvas(QWidget):
         for k, (offset, width, colour, opacity) in enumerate((
             (-0.46, 1.7, main, 105),
             (0.03, 1.15, acc, 82),
-            (0.39, 1.35, QColor("#9d83ff"), 62),
+            (0.39, 1.35, qcol("#9d83ff"), 62),
         )):
             path = QPainterPath()
             for i in range(31):
@@ -967,7 +994,7 @@ class HudCanvas(QWidget):
             px = cx + math.cos(angle) * orb_r * (radial + wobble)
             py = cy + math.sin(angle * 1.21) * orb_r * (radial * 0.72 + wobble)
             if ((px - cx) / orb_r) ** 2 + ((py - cy) / orb_r) ** 2 <= 0.88:
-                col = acc if i % 7 == 0 else (main if i % 3 else QColor("#9d83ff"))
+                col = acc if i % 7 == 0 else (main if i % 3 else qcol("#9d83ff"))
                 dot = mix(col, 0.68)
                 dot.setAlpha(48 + int(92 * (0.5 + 0.5 * math.sin(seed + t * motion))))
                 size = 0.55 + (i % 4) * 0.30
@@ -1137,9 +1164,14 @@ class HudCanvas(QWidget):
         ]
         card_w = max(94.0, min(126.0, orb_r * 0.74))
         card_h = 30.0
-        for title, detail, side, y_ratio in labels:
-            card_x = cx + side * (orb_r + card_w * 0.62)
-            card_y = cy + y_ratio * orb_r - card_h * 0.5
+        for i, (title, detail, side, y_ratio) in enumerate(labels):
+            # Keep the callouts attached to the same six anchors, with only a
+            # quiet two-pixel orbit so the HUD feels alive without drifting.
+            panel_phase = t * 0.42 + i * 1.07
+            orbit_dx = math.sin(panel_phase) * min(2.2, orb_r * 0.012)
+            orbit_dy = math.cos(panel_phase * 0.83) * min(1.7, orb_r * 0.009)
+            card_x = cx + side * (orb_r + card_w * 0.62) + orbit_dx
+            card_y = cy + y_ratio * orb_r - card_h * 0.5 + orbit_dy
             if side < 0:
                 card_x -= card_w
                 line_x = card_x + card_w
@@ -1148,15 +1180,15 @@ class HudCanvas(QWidget):
             card_x = max(6.0, min(W - card_w - 6.0, card_x))
             card_y = max(8.0, min(H - card_h - 8.0, card_y))
             line_x = card_x + card_w if side < 0 else card_x
-            anchor_x = cx + side * orb_r * 0.74
-            anchor_y = cy + y_ratio * orb_r
+            anchor_x = cx + side * orb_r * 0.74 + orbit_dx * 0.35
+            anchor_y = cy + y_ratio * orb_r + orbit_dy * 0.35
             connector = mix(acc if title == "VOICE ACTIVE" else main, 0.42)
             connector.setAlpha(100)
             p.setPen(QPen(connector, 1.0))
             p.drawLine(QLineF(line_x, card_y + card_h * 0.5,
                               anchor_x, anchor_y))
 
-            card = QColor("#0b2037")
+            card = qcol("#0b2037")
             card.setAlpha(164)
             p.setBrush(QBrush(card))
             border = mix(main, 0.32)
@@ -4159,6 +4191,11 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if hasattr(self, "_header") and hasattr(self, "_title_lbl"):
+            # The title spans the whole header instead of the leftover space
+            # between the unequal left and right tool groups.
+            self._title_lbl.setGeometry(0, 1, self._header.width(), 56)
+            self._title_lbl.raise_()
         cw = self.centralWidget()
         if self._overlay and self._overlay.isVisible():
             ow, oh = 460, 390
@@ -4416,6 +4453,7 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QWidget:
         w = QWidget()
+        self._header = w
         w.setFixedHeight(58)
         w.setStyleSheet(f"""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -4471,18 +4509,22 @@ class MainWindow(QMainWindow):
         lay.addWidget(self._monitor_btn)
         lay.addStretch()
 
-        mid = QVBoxLayout(); mid.setSpacing(1)
         self._title_lbl = QLabel("Project: Zero")
+        self._title_lbl.setParent(w)
+        self._title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._title_lbl.setFont(QFont("Courier New", 18, QFont.Weight.Bold))
+        title_font = QFont("Bahnschrift", 16, QFont.Weight.Medium)
+        title_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.25)
+        self._title_lbl.setFont(title_font)
         self._title_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
-        mid.addWidget(self._title_lbl)
         self._sub_lbl = QLabel("")
+        self._sub_lbl.setParent(w)
         self._sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub_lbl.setFont(QFont("Courier New", 7))
         self._sub_lbl.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent;")
-        mid.addWidget(self._sub_lbl)
-        lay.addLayout(mid)
+        self._sub_lbl.hide()
+        self._title_lbl.setGeometry(0, 1, w.width(), 56)
+        self._title_lbl.raise_()
         lay.addStretch()
 
         right_col = QVBoxLayout(); right_col.setSpacing(2)
