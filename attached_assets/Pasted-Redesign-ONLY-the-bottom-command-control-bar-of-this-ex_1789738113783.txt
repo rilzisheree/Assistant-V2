@@ -1,0 +1,39 @@
+Redesign ONLY the bottom command-control bar of this existing AI assistant interface.
+
+Use the attached screenshot as the exact visual reference. DO NOT redesign, move, resize, or modify any other part of the interface. Preserve the existing HUD, central reactor, side panels, colors, typography, spacing, and overall layout.
+
+Focus exclusively on the bottom-center control area containing:
+
+* INTERRUPT [ESC] button
+* COMMAND INPUT field
+* send/play button
+* MICROPHONE ACTIVE button
+
+Make this control bar feel significantly more modern, seamless, premium, and futuristic while still belonging naturally to the existing interface.
+
+Design direction:
+
+* Keep the dark navy / deep blue sci-fi aesthetic.
+* Use subtle cyan, blue, and mint-green accents already present in the interface.
+* Replace the current chunky rectangular controls with a more unified, elegant control dock.
+* Make the entire control area feel like ONE cohesive component rather than several separate boxes.
+* Use a slim floating/pill-shaped dock with subtle transparency or dark glass.
+* Add extremely subtle blue/cyan glow around active elements.
+* Give the command input the visual priority.
+* Make the input field wider and cleaner, with a minimal placeholder such as "Type a command..."
+* Integrate the send button directly into the input instead of making it feel like a separate unrelated button.
+* Keep INTERRUPT visually accessible but secondary.
+* Make MICROPHONE ACTIVE feel like an integrated voice-control state rather than a large standalone button.
+* Use thin borders, soft inner highlights, restrained glow, and clean spacing.
+* Avoid excessive neon, excessive gradients, giant buttons, unnecessary icons, or flashy cyberpunk effects.
+* The result should feel like a high-end AI operating system interface rather than a gaming HUD.
+
+IMPORTANT:
+This is a UI refinement, NOT a complete redesign.
+Do not change the position or dimensions of the rest of the interface.
+Do not add new panels or features.
+Do not remove any existing functionality.
+Only redesign the bottom command-control bar.
+Keep its overall footprint approximately the same so it fits naturally into the existing layout.
+
+Aim for: "Apple-level restraint + futuristic AI terminal + JARVIS-inspired sophistication."

@@ -3883,29 +3883,30 @@ class MainWindow(QMainWindow):
         # The command controls live in the centred glass dock under the HUD,
         # matching the reference composition. They remain the same widgets
         # and callbacks; only their visual placement changes.
-        self._command_label = _sec("COMMAND INPUT")
         self._command_row = self._build_input_row()
 
-        self._interrupt_btn = QPushButton("✋  INTERRUPT  [ESC]")
-        self._interrupt_btn.setFixedHeight(38)
+        self._interrupt_btn = QPushButton("INTERRUPT  [ESC]")
+        self._interrupt_btn.setFixedHeight(32)
         self._interrupt_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
         self._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._interrupt_btn.setStyleSheet(f"""
             QPushButton {{
-                background: rgba(45, 10, 29, 180); color: {C.MUTED_C};
-                border: 1px solid {C.MUTED_C}; border-radius: 8px;
+                background: rgba(15, 35, 54, 90); color: {C.TEXT_MED};
+                border: 1px solid {C.BORDER}; border-radius: 16px;
+                padding: 0 12px;
             }}
             QPushButton:hover {{
-                background: #200010; border: 1px solid #ff6688;
+                background: rgba(74, 128, 155, 70);
+                color: {C.WHITE}; border: 1px solid {C.BORDER_B};
             }}
             QPushButton:pressed {{
-                background: #300018;
+                background: rgba(74, 128, 155, 110);
             }}
         """)
         self._interrupt_btn.clicked.connect(self._do_interrupt)
 
-        self._mute_btn = QPushButton("🎙  MICROPHONE ACTIVE")
-        self._mute_btn.setFixedHeight(36)
+        self._mute_btn = QPushButton("MIC ACTIVE")
+        self._mute_btn.setFixedHeight(32)
         self._mute_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
         self._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mute_btn.clicked.connect(self._toggle_mute)
@@ -3915,34 +3916,30 @@ class MainWindow(QMainWindow):
         return w
 
     def _build_command_dock(self) -> QWidget:
-        """Centered glass control rail below the animated HUD."""
+        """Slim, unified glass command rail below the animated HUD."""
         dock = QWidget()
         dock.setObjectName("CommandDock")
-        dock.setMinimumHeight(62)
-        dock.setMaximumWidth(760)
+        dock.setFixedHeight(54)
+        dock.setMaximumWidth(720)
         dock.setStyleSheet(f"""
             QWidget#CommandDock {{
-                background: rgba(19, 54, 79, 225);
-                border: 1px solid {C.BORDER_B};
-                border-radius: 12px;
+                background: rgba(9, 29, 47, 238);
+                border: 1px solid {C.BORDER_A};
+                border-radius: 27px;
             }}
         """)
         lay = QHBoxLayout(dock)
-        lay.setContentsMargins(12, 9, 12, 9)
-        lay.setSpacing(9)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(8)
 
-        self._interrupt_btn.setFixedWidth(118)
-        self._interrupt_btn.setFixedHeight(40)
+        self._interrupt_btn.setFixedWidth(108)
+        self._interrupt_btn.setFixedHeight(32)
         lay.addWidget(self._interrupt_btn)
 
-        command = QVBoxLayout()
-        command.setSpacing(2)
-        command.addWidget(self._command_label)
-        command.addLayout(self._command_row)
-        lay.addLayout(command, stretch=1)
+        lay.addLayout(self._command_row, stretch=1)
 
-        self._mute_btn.setFixedWidth(166)
-        self._mute_btn.setFixedHeight(40)
+        self._mute_btn.setFixedWidth(130)
+        self._mute_btn.setFixedHeight(32)
         lay.addWidget(self._mute_btn)
         return dock
 
@@ -4123,34 +4120,52 @@ class MainWindow(QMainWindow):
         self._quick_drawer.setGeometry(12, 54, _W, self._quick_drawer.sizeHint().height())
 
     def _build_input_row(self) -> QHBoxLayout:
-        row = QHBoxLayout(); row.setSpacing(7)
+        row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(0)
+        shell = QWidget()
+        shell.setObjectName("CommandInputShell")
+        shell.setFixedHeight(34)
+        shell.setStyleSheet(f"""
+            QWidget#CommandInputShell {{
+                background: rgba(15, 44, 66, 235);
+                border: 1px solid {C.BORDER_A};
+                border-radius: 17px;
+            }}
+        """)
+        shell_lay = QHBoxLayout(shell)
+        shell_lay.setContentsMargins(10, 2, 4, 2)
+        shell_lay.setSpacing(2)
+
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Type a command or question…")
+        self._input.setPlaceholderText("Type a command...")
         self._input.setFont(QFont("Courier New", 9))
-        self._input.setFixedHeight(36)
+        self._input.setFixedHeight(28)
         self._input.setStyleSheet(f"""
             QLineEdit {{
-                background: rgba(7, 25, 43, 230); color: {C.WHITE};
-                border: 1px solid {C.BORDER_A}; border-radius: 8px; padding: 5px 10px;
+                background: transparent; color: {C.WHITE};
+                border: none; padding: 3px 4px;
             }}
-            QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
+            QLineEdit:focus {{ border: none; }}
         """)
         self._input.returnPressed.connect(self._send)
-        row.addWidget(self._input)
+        shell_lay.addWidget(self._input, stretch=1)
 
-        send = QPushButton("▸")
-        send.setFixedSize(36, 36)
-        send.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
+        send = QPushButton("›")
+        send.setFixedSize(28, 28)
+        send.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         send.setCursor(Qt.CursorShape.PointingHandCursor)
         send.setStyleSheet(f"""
             QPushButton {{
-                background: {C.PRI_GHO}; color: {C.PRI};
-                border: 1px solid {C.PRI_DIM}; border-radius: 8px;
+                background: transparent; color: {C.PRI};
+                border: none; border-radius: 14px;
             }}
-            QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
+            QPushButton:hover {{
+                background: rgba(125, 233, 255, 35);
+                color: {C.WHITE};
+            }}
         """)
         send.clicked.connect(self._send)
-        row.addWidget(send)
+        shell_lay.addWidget(send)
+        row.addWidget(shell)
         return row
 
     def _build_content_panel(self) -> QWidget:
@@ -5253,21 +5268,24 @@ class MainWindow(QMainWindow):
 
     def _style_mute_btn(self):
         if self._muted:
-            self._mute_btn.setText("🔇  MICROPHONE MUTED")
+            self._mute_btn.setText("MIC MUTED")
             self._mute_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: #140006; color: {C.MUTED_C};
-                    border: 1px solid {C.MUTED_C}; border-radius: 3px;
+                    background: rgba(87, 33, 62, 85); color: {C.MUTED_C};
+                    border: 1px solid rgba(255, 111, 156, 150);
+                    border-radius: 16px; padding: 0 10px;
                 }}
+                QPushButton:hover {{ background: rgba(87, 33, 62, 130); }}
             """)
         else:
-            self._mute_btn.setText("🎙  MICROPHONE ACTIVE")
+            self._mute_btn.setText("MIC ACTIVE")
             self._mute_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: #00140a; color: {C.GREEN};
-                    border: 1px solid {C.GREEN}; border-radius: 3px;
+                    background: rgba(83, 205, 164, 42); color: {C.GREEN};
+                    border: 1px solid rgba(117, 255, 207, 150);
+                    border-radius: 16px; padding: 0 10px;
                 }}
-                QPushButton:hover {{ background: #001f10; }}
+                QPushButton:hover {{ background: rgba(83, 205, 164, 80); }}
             """)
 
     def _send(self):
