@@ -1,0 +1,164 @@
+Make the following refinements to the existing Project Zero AI Assistant interface.
+
+IMPORTANT:
+
+* Do NOT change or break existing functionality.
+* Do NOT modify backend logic, APIs, commands, or assistant behavior.
+* Preserve the current UI structure and interactions.
+* Only modify the Activity Log window behavior and visual color palette.
+
+### 1. EVERY NEW CONVERSATION GETS A NEW ACTIVITY WINDOW
+
+When I speak to the AI and a new interaction occurs, create a **NEW Activity Log window**.
+
+Do NOT reuse, replace, or overwrite the previous Activity Log window.
+
+For example:
+
+User talks to AI
+→ Activity Window #1 opens
+
+User talks again
+→ Activity Window #2 opens
+
+User talks again
+→ Activity Window #3 opens
+
+All previously opened windows should remain visible until the user manually closes them.
+
+Each window should contain the interaction associated with that specific request:
+
+**USER**
+What the user said
+
+**AI**
+What the assistant responded
+
+**SYSTEM**
+What the assistant actually did / actions performed
+
+This should make the interface feel like multiple active AI processes/windows rather than one permanent log.
+
+### 2. RANDOMIZED WINDOW POSITION
+
+Every newly created Activity Log window should appear in a **different randomized position**.
+
+Do NOT spawn every window in the same location.
+
+The position should be randomly selected within a safe area around the central AI core.
+
+Important:
+
+* Keep windows reasonably close to the orb.
+* Keep them fully inside the application boundaries.
+* Do not place them directly on top of another Activity Log.
+* Avoid covering the central AI core whenever possible.
+* Avoid placing them over the bottom command interface.
+* Avoid placing them so close together that their contents become unreadable.
+
+Use a subtle randomized offset around the core.
+
+The randomness should feel **organic and intentional**, not chaotic.
+
+For example, one window could appear slightly upper-left, another lower-right, another further left, etc.
+
+Do NOT use the exact same position as the previous window.
+
+### 3. PRESERVE INDIVIDUAL WINDOWS
+
+Every Activity Log window must remain independently:
+
+* Draggable
+* Closable
+* Resizable based on its content
+* Readable
+* Persistent
+
+Closing one Activity Log must NOT close the others.
+
+Dragging one window must NOT move the others.
+
+Each window should behave like its own small floating AI system window.
+
+### 4. EVEN DARKER COLOR PALETTE
+
+I like the current black + dark-blue direction, but the entire interface is still too bright.
+
+Make the overall application **noticeably darker and deeper**.
+
+The goal is:
+
+**BLACK → DEEP BLACK → VERY DARK NAVY → SUBTLE DARK BLUE**
+
+rather than:
+
+**BLACK → BLUE → BRIGHT BLUE**
+
+Darken:
+
+* Background
+* Panels
+* Borders
+* Core surroundings
+* UI surfaces
+* Shadows
+* Blue accents
+* Blue glow
+
+The background should feel almost black.
+
+The blue should remain visible, but much more restrained.
+
+### 5. DARK BLUE ACCENTS
+
+Do NOT remove the blue completely.
+
+Instead, make the blue:
+
+* Deeper
+* Less saturated
+* More subtle
+* More atmospheric
+
+Use blue primarily for:
+
+* Active states
+* Core illumination
+* Tiny indicators
+* Selected elements
+* Small telemetry highlights
+* Very subtle borders
+* Minimal glow
+
+Avoid bright cyan or neon blue.
+
+The blue should feel like **light coming from inside the system**, rather than the UI being painted blue.
+
+### 6. CORE
+
+Keep the AI core as the main source of illumination.
+
+The surrounding interface should remain dark enough that the core naturally becomes the visual focus.
+
+Reduce the surrounding blue brightness while keeping the core's internal blue energy visible.
+
+The overall impression should be:
+
+**A nearly black AI operating system with a subtle deep-blue energy source at its center.**
+
+Not a bright blue sci-fi dashboard.
+
+### FINAL FEEL
+
+The final interface should feel:
+
+**Darker**
+**Deeper**
+**Cleaner**
+**More cinematic**
+**More mysterious**
+**More premium**
+
+And the Activity Logs should create the feeling of an AI actively generating independent system windows around the core:
+
+**USER SPEAKS → NEW WINDOW MATERIALIZES → RANDOM POSITION → WINDOW STAYS → USER CAN DRAG/CLOSE IT → NEXT REQUEST CREATES ANOTHER WINDOW ELSEWHERE.**

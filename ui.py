@@ -77,27 +77,27 @@ class C:
     # Near-black glass with a cold, restrained blue signal colour. These
     # values are shared by both the painted HUD and the Qt panels so the
     # surface reads as one calm instrument instead of a neon dashboard.
-    BG        = "#03070d"
-    PANEL     = "#070d16"
-    PANEL2    = "#0b1422"
-    BORDER    = "#17283d"
-    BORDER_B  = "#365978"
-    BORDER_A  = "#23415c"
-    PRI       = "#b8cce0"
-    PRI_DIM   = "#6d8aa3"
-    PRI_GHO   = "#102238"
-    ACC       = "#dbe7f0"
-    ACC2      = "#7e9fba"
-    GREEN     = "#a5c1d1"
-    GREEN_D   = "#5d7d95"
+    BG        = "#010308"
+    PANEL     = "#040910"
+    PANEL2    = "#07111c"
+    BORDER    = "#0d1b2a"
+    BORDER_B  = "#1e3a53"
+    BORDER_A  = "#142b40"
+    PRI       = "#a9bdcf"
+    PRI_DIM   = "#58738b"
+    PRI_GHO   = "#081827"
+    ACC       = "#c5d5df"
+    ACC2      = "#6689a4"
+    GREEN     = "#91aebd"
+    GREEN_D   = "#4e6b82"
     RED       = "#d97783"
     MUTED_C   = "#8f6474"
-    TEXT      = "#d4e0ea"
-    TEXT_DIM  = "#688096"
-    TEXT_MED  = "#98acbc"
-    WHITE     = "#f0f5f8"
-    DARK      = "#040910"
-    BAR_BG    = "#122235"
+    TEXT      = "#c4d4df"
+    TEXT_DIM  = "#536b7e"
+    TEXT_MED  = "#8299aa"
+    WHITE     = "#e3ebf0"
+    DARK      = "#02050a"
+    BAR_BG    = "#0a1826"
 
 # Keys tied to the accent colour — semantic error colour stays fixed.
 _HUE_LINKED = (
@@ -118,27 +118,27 @@ DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 # Monochrome is a designed black-first palette rather than a colour filter.
 # Deep blue is reserved for depth, active states, and the core's energy.
 _MONOCHROME_PALETTE: dict[str, str] = {
-    "BG":       "#05070a",
-    "PANEL":    "#090d12",
-    "PANEL2":   "#111923",
-    "BORDER":   "#1b2a38",
-    "BORDER_B": "#40566a",
-    "BORDER_A": "#2c4356",
-    "PRI":      "#d0dbe4",
-    "PRI_DIM":  "#879baa",
-    "PRI_GHO":  "#172736",
-    "ACC":      "#e3ebf0",
-    "ACC2":     "#a0b4c2",
-    "GREEN":    "#b9cbd5",
-    "GREEN_D":  "#718897",
+    "BG":       "#020407",
+    "PANEL":    "#05080c",
+    "PANEL2":   "#0a1118",
+    "BORDER":   "#101a23",
+    "BORDER_B": "#294052",
+    "BORDER_A": "#1d3444",
+    "PRI":      "#bbc9d2",
+    "PRI_DIM":  "#6d8595",
+    "PRI_GHO":  "#0d1d29",
+    "ACC":      "#cbd7dd",
+    "ACC2":     "#7d99a9",
+    "GREEN":    "#a1b8c2",
+    "GREEN_D":  "#5c7785",
     "RED":      "#aa7a83",
     "MUTED_C":  "#876b74",
-    "TEXT":     "#dce5ea",
-    "TEXT_DIM": "#7a8d9b",
-    "TEXT_MED": "#aabac4",
-    "WHITE":    "#f3f6f8",
-    "DARK":     "#06090d",
-    "BAR_BG":   "#1a2936",
+    "TEXT":     "#cbd8de",
+    "TEXT_DIM": "#657b87",
+    "TEXT_MED": "#91a5ae",
+    "WHITE":    "#e7eef1",
+    "DARK":     "#030609",
+    "BAR_BG":   "#0d1b25",
 }
 _MONOCHROME_HEXES = frozenset(value.lower() for value in _MONOCHROME_PALETTE.values())
 
@@ -4321,13 +4321,13 @@ class MainWindow(QMainWindow):
         cw = self.centralWidget()
         panel_style = f"""
             QFrame#ContextPanel {{
-                background: rgba(7, 24, 42, 236);
+                background: rgba(2, 9, 16, 244);
                 border: 1px solid {C.BORDER_A};
                 border-radius: 9px;
             }}
             QLabel {{ background: transparent; }}
             QTextEdit {{
-                background: rgba(4, 16, 29, 175);
+                background: rgba(1, 6, 12, 224);
                 color: {C.TEXT};
                 border: 1px solid {C.BORDER};
                 border-radius: 4px;
@@ -4335,77 +4335,11 @@ class MainWindow(QMainWindow):
             }}
         """
 
-        self._activity_lines: list[str] = []
-        self._activity_user_position: QPoint | None = None
-        self._activity_target_rect: QRect | None = None
-        self._activity_hiding = False
-        self._activity_overlay = _ActivityOverlay(cw)
-        self._activity_overlay.setObjectName("ContextPanel")
-        self._activity_overlay.setStyleSheet(panel_style)
-        self._activity_overlay.setMinimumSize(348, 142)
-        self._activity_overlay.setMaximumSize(560, 420)
-        self._activity_overlay.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
-        self._activity_opacity = QGraphicsOpacityEffect(self._activity_overlay)
-        self._activity_opacity.setOpacity(1.0)
-        self._activity_overlay.setGraphicsEffect(self._activity_opacity)
-        self._activity_overlay.position_changed.connect(
-            self._remember_activity_position
-        )
-        activity_lay = QVBoxLayout(self._activity_overlay)
-        activity_lay.setContentsMargins(10, 8, 10, 9)
-        activity_lay.setSpacing(4)
-        activity_hdr = _ActivityHeader(self._activity_overlay)
-        activity_hdr_lay = QHBoxLayout(activity_hdr)
-        activity_hdr_lay.setContentsMargins(0, 0, 0, 0)
-        activity_hdr_lay.setSpacing(4)
-        activity_title = QLabel("◈  ACTIVITY / LIVE")
-        activity_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        activity_title_font = QFont("Courier New", QFont.Weight.Bold)
-        activity_title_font.setPointSizeF(7.8)
-        activity_title.setFont(activity_title_font)
-        activity_title.setStyleSheet(f"color: {C.PRI};")
-        activity_hdr_lay.addWidget(activity_title)
-        activity_hdr_lay.addStretch()
-        activity_state = QLabel("PERSISTENT")
-        activity_state.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        activity_state_font = QFont("Courier New")
-        activity_state_font.setPointSizeF(5.5)
-        activity_state.setFont(activity_state_font)
-        activity_state.setStyleSheet(f"color: {C.TEXT_DIM};")
-        activity_hdr_lay.addWidget(activity_state)
-        close_activity = QPushButton("×")
-        close_activity.setFixedSize(18, 18)
-        close_activity.setFont(QFont("Courier New", 10))
-        close_activity.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_activity.setStyleSheet(
-            f"QPushButton {{ color: {C.TEXT_DIM}; background: transparent; "
-            f"border: 1px solid {C.BORDER}; border-radius: 3px; }}"
-            f"QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}"
-        )
-        close_activity.clicked.connect(self._hide_activity)
-        activity_hdr_lay.addWidget(close_activity)
-        activity_lay.addWidget(activity_hdr)
-        self._activity_display = QTextEdit()
-        self._activity_display.setReadOnly(True)
-        display_font = QFont("Courier New")
-        display_font.setPointSizeF(6.7)
-        self._activity_display.setFont(display_font)
-        self._activity_display.setLineWrapMode(
-            QTextEdit.LineWrapMode.WidgetWidth
-        )
-        self._activity_display.setWordWrapMode(
-            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
-        )
-        self._activity_display.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._activity_display.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        activity_lay.addWidget(self._activity_display, stretch=1)
-        self._activity_overlay.hide()
+        self._activity_overlays: list[_ActivityOverlay] = []
+        self._activity_active_overlay: _ActivityOverlay | None = None
+        self._activity_last_position: QPoint | None = None
+        self._activity_sequence = 0
+        self._activity_panel_style = panel_style
 
         self._diagnostic_overlay = QFrame(cw)
         self._diagnostic_overlay.setObjectName("ContextPanel")
@@ -4441,52 +4375,214 @@ class MainWindow(QMainWindow):
             diag_lay.addWidget(row)
         self._diagnostic_overlay.hide()
 
-    def _remember_activity_position(self, position: QPoint):
-        self._activity_user_position = self._clamp_activity_position(position)
-        if getattr(self, "_activity_animation", None) is None:
-            self._activity_target_rect = QRect(self._activity_overlay.geometry())
+    def _create_activity_overlay(self, initial_line: str) -> _ActivityOverlay:
+        """Create one independent activity window for one conversation."""
+        overlay = _ActivityOverlay(self.centralWidget())
+        overlay.setObjectName("ContextPanel")
+        overlay.setStyleSheet(self._activity_panel_style)
+        overlay.setMinimumSize(348, 142)
+        overlay.setMaximumSize(560, 420)
+        overlay.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        overlay._activity_lines = [initial_line]
+        overlay._activity_user_position = None
+        overlay._activity_target_rect = None
+        overlay._activity_hiding = False
+        overlay._activity_animation = None
+        overlay._activity_opacity = QGraphicsOpacityEffect(overlay)
+        overlay._activity_opacity.setOpacity(1.0)
+        overlay.setGraphicsEffect(overlay._activity_opacity)
+        overlay.position_changed.connect(
+            lambda position, panel=overlay:
+                self._remember_activity_position(panel, position)
+        )
 
-    def _clamp_activity_position(self, position: QPoint) -> QPoint:
+        activity_lay = QVBoxLayout(overlay)
+        activity_lay.setContentsMargins(10, 8, 10, 9)
+        activity_lay.setSpacing(4)
+        activity_hdr = _ActivityHeader(overlay)
+        activity_hdr_lay = QHBoxLayout(activity_hdr)
+        activity_hdr_lay.setContentsMargins(0, 0, 0, 0)
+        activity_hdr_lay.setSpacing(4)
+
+        self._activity_sequence += 1
+        activity_title = QLabel(
+            f"◈  ACTIVITY / {self._activity_sequence:02d}"
+        )
+        activity_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        activity_title_font = QFont("Courier New", 8, QFont.Weight.Bold)
+        activity_title_font.setPointSizeF(7.8)
+        activity_title.setFont(activity_title_font)
+        activity_title.setStyleSheet(f"color: {C.PRI};")
+        activity_hdr_lay.addWidget(activity_title)
+        activity_hdr_lay.addStretch()
+
+        activity_state = QLabel("PERSISTENT")
+        activity_state.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        activity_state_font = QFont("Courier New")
+        activity_state_font.setPointSizeF(5.5)
+        activity_state.setFont(activity_state_font)
+        activity_state.setStyleSheet(f"color: {C.TEXT_DIM};")
+        activity_hdr_lay.addWidget(activity_state)
+
+        close_activity = QPushButton("×")
+        close_activity.setFixedSize(18, 18)
+        close_activity.setFont(QFont("Courier New", 10))
+        close_activity.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_activity.setStyleSheet(
+            f"QPushButton {{ color: {C.TEXT_DIM}; background: transparent; "
+            f"border: 1px solid {C.BORDER}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}"
+        )
+        close_activity.clicked.connect(
+            lambda _checked=False, panel=overlay:
+                self._close_activity_overlay(panel)
+        )
+        activity_hdr_lay.addWidget(close_activity)
+        activity_lay.addWidget(activity_hdr)
+
+        display = QTextEdit()
+        display.setReadOnly(True)
+        display_font = QFont("Courier New")
+        display_font.setPointSizeF(6.7)
+        display.setFont(display_font)
+        display.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        display.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        )
+        display.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        display.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        overlay._activity_display = display
+        activity_lay.addWidget(display, stretch=1)
+
+        self._activity_overlays.append(overlay)
+        self._render_activity_display(overlay)
+        self._resize_activity_overlay(overlay)
+        self._place_activity_overlay(overlay)
+        overlay.hide()
+        return overlay
+
+    def _remember_activity_position(
+        self, overlay: _ActivityOverlay, position: QPoint
+    ):
+        overlay._activity_user_position = self._clamp_activity_position(
+            overlay, position
+        )
+        if overlay._activity_animation is None:
+            overlay._activity_target_rect = QRect(overlay.geometry())
+
+    def _clamp_activity_position(
+        self, overlay: _ActivityOverlay, position: QPoint
+    ) -> QPoint:
         cw = self.centralWidget()
-        if cw is None or not hasattr(self, "_activity_overlay"):
+        if cw is None:
             return position
-        max_x = max(10, cw.width() - self._activity_overlay.width() - 10)
-        max_y = max(66, cw.height() - self._activity_overlay.height() - 12)
+        max_x = max(10, cw.width() - overlay.width() - 10)
+        max_y = max(66, cw.height() - overlay.height() - 12)
         return QPoint(
             max(10, min(max_x, position.x())),
             max(66, min(max_y, position.y())),
         )
 
+    def _place_activity_overlay(self, overlay: _ActivityOverlay):
+        """Choose a close, safe, non-stacked position around the core."""
+        cw = self.centralWidget()
+        if cw is None:
+            return
+        w, h = cw.width(), cw.height()
+        core_x, core_y = w // 2, max(220, min(h // 2 - 15, h - 260))
+        base_x = core_x - overlay.width() // 2
+        base_y = core_y - overlay.height() // 2
+        offsets = [
+            (-430, -175), (275, -175),
+            (-475, -5), (320, -5),
+            (-405, 155), (245, 155),
+            (-170, -245), (105, 220),
+            (-545, -120), (390, -120),
+            (-535, 75), (380, 75),
+        ]
+        random.shuffle(offsets)
+        core_rect = QRect(core_x - 155, core_y - 145, 310, 290)
+        occupied = [
+            other.geometry().adjusted(-14, -14, 14, 14)
+            for other in self._activity_overlays
+            if other is not overlay and other.isVisible()
+        ]
+        candidates = []
+        for dx, dy in offsets:
+            position = self._clamp_activity_position(
+                overlay, QPoint(base_x + dx, base_y + dy)
+            )
+            if self._activity_last_position == position:
+                continue
+            rect = QRect(position, overlay.size())
+            if rect.bottom() > h - 130:
+                continue
+            existing_overlap = sum(
+                rect.intersected(other).width()
+                * rect.intersected(other).height()
+                for other in occupied
+                if rect.intersects(other)
+            )
+            core_overlap = (
+                rect.intersected(core_rect).width()
+                * rect.intersected(core_rect).height()
+                if rect.intersects(core_rect) else 0
+            )
+            candidates.append((position, existing_overlap, core_overlap))
+
+        if not candidates:
+            position = self._clamp_activity_position(
+                overlay, QPoint(base_x, base_y)
+            )
+            if self._activity_last_position == position:
+                position = self._clamp_activity_position(
+                    overlay, position + QPoint(24, 24)
+                )
+        else:
+            separated = [candidate for candidate in candidates
+                         if candidate[1] == 0]
+            pool = separated or candidates
+            position = min(
+                pool,
+                key=lambda candidate: (
+                    candidate[1],
+                    candidate[2],
+                    random.random(),
+                ),
+            )[0]
+        overlay._activity_user_position = position
+        self._activity_last_position = QPoint(position)
+        overlay.move(position)
+        overlay._activity_target_rect = QRect(overlay.geometry())
+
     def _position_context_overlays(self):
-        if not hasattr(self, "_activity_overlay"):
+        if not hasattr(self, "_activity_overlays"):
             return
         cw = self.centralWidget()
         w, h = cw.width(), cw.height()
-        activity_w = self._activity_overlay.width()
+        for overlay in list(self._activity_overlays):
+            overlay._activity_user_position = self._clamp_activity_position(
+                overlay, overlay._activity_user_position or overlay.pos()
+            )
+            overlay.move(overlay._activity_user_position)
+            if (not overlay.isVisible()
+                    and overlay._activity_animation is None):
+                overlay._activity_target_rect = QRect(overlay.geometry())
+
         diag_w = self._diagnostic_overlay.width()
-        if self._activity_user_position is None:
-            self._activity_overlay.move(
-                max(10, min(w - activity_w - 10, w // 2 + 150)),
-                max(66, min(h - self._activity_overlay.height() - 12, 76)),
-            )
-        else:
-            self._activity_user_position = self._clamp_activity_position(
-                self._activity_user_position
-            )
-            self._activity_overlay.move(self._activity_user_position)
         self._diagnostic_overlay.move(
             max(10, min(w - diag_w - 10, 22)),
             max(66, min(h - self._diagnostic_overlay.height() - 12, 78)),
         )
-        if (not self._activity_overlay.isVisible()
-                and getattr(self, "_activity_animation", None) is None):
-            self._activity_target_rect = QRect(self._activity_overlay.geometry())
 
-    def _resize_activity_overlay(self):
-        """Fit the activity panel to its content without letting it run away."""
-        if not hasattr(self, "_activity_display"):
-            return
-
+    def _resize_activity_overlay(self, overlay: _ActivityOverlay):
+        """Fit one activity panel to its content without letting it run away."""
         cw = self.centralWidget()
         if cw is None:
             return
@@ -4494,46 +4590,41 @@ class MainWindow(QMainWindow):
         min_w, min_h = 348, 142
         max_w = min(560, max(min_w, cw.width() - 20))
         max_h = min(420, max(min_h, cw.height() - 78))
-        display = self._activity_display
-
-        # The longest unwrapped line determines whether a wider panel will
-        # make the message substantially easier to read. The upper bound
-        # keeps a single very long response from taking over the HUD.
+        display = overlay._activity_display
         metrics = display.fontMetrics()
         longest_line = max(
             (
                 metrics.horizontalAdvance(part)
-                for entry in self._activity_lines
+                for entry in overlay._activity_lines
                 for part in entry.splitlines()
             ),
             default=0,
         )
         target_w = max(min_w, min(max_w, longest_line + 48))
 
-        # Animation completion leaves the panel at a fixed size. Release those
-        # temporary constraints before measuring the next event.
-        self._activity_overlay.setMinimumSize(0, 0)
-        self._activity_overlay.setMaximumSize(16777215, 16777215)
-        self._activity_overlay.resize(target_w, min_h)
-
-        # Account for the panel margins, QTextEdit frame, and text padding.
-        text_width = max(1, target_w - 32)
+        overlay.setMinimumSize(0, 0)
+        overlay.setMaximumSize(16777215, 16777215)
+        overlay.resize(target_w, min_h)
         document = display.document()
-        document.setTextWidth(text_width)
+        document.setTextWidth(max(1, target_w - 32))
         document_height = document.documentLayout().documentSize().height()
-        chrome_height = 56
         target_h = max(
             min_h,
-            min(max_h, math.ceil(document_height + chrome_height)),
+            min(max_h, math.ceil(document_height + 56)),
         )
-        self._activity_overlay.resize(target_w, target_h)
-        self._activity_overlay.setMinimumSize(min_w, min_h)
-        self._activity_overlay.setMaximumSize(max_w, max_h)
+        overlay.resize(target_w, target_h)
+        overlay.setMinimumSize(min_w, min_h)
+        overlay.setMaximumSize(max_w, max_h)
+        if overlay._activity_user_position is not None:
+            overlay._activity_user_position = self._clamp_activity_position(
+                overlay, overlay._activity_user_position
+            )
+            overlay.move(overlay._activity_user_position)
 
-    def _render_activity_display(self):
-        """Render activity entries with compact hierarchy and readable spacing."""
+    def _render_activity_display(self, overlay: _ActivityOverlay):
+        """Render one activity conversation with compact hierarchy."""
         rows = []
-        for entry in self._activity_lines:
+        for entry in overlay._activity_lines:
             if entry.startswith("YOU     "):
                 label, color = "YOU", C.ACC
                 body = entry[8:]
@@ -4549,23 +4640,22 @@ class MainWindow(QMainWindow):
                 f'<span style="color:{color}; font-weight:600;">'
                 f'{label:<6}</span>{body_html}</div>'
             )
-        self._activity_display.setHtml("".join(rows))
-        self._activity_display.moveCursor(
-            self._activity_display.textCursor().MoveOperation.End
+        overlay._activity_display.setHtml("".join(rows))
+        overlay._activity_display.moveCursor(
+            overlay._activity_display.textCursor().MoveOperation.End
         )
 
-    def _stop_activity_animation(self):
-        animation = getattr(self, "_activity_animation", None)
+    def _stop_activity_animation(self, overlay: _ActivityOverlay):
+        animation = overlay._activity_animation
         if animation is not None:
             animation.stop()
-            self._activity_animation = None
+            overlay._activity_animation = None
 
-    def _animate_activity_in(self):
-        self._stop_activity_animation()
-        overlay = self._activity_overlay
-        if self._activity_target_rect is not None:
-            overlay.setFixedSize(self._activity_target_rect.size())
-            overlay.setGeometry(self._activity_target_rect)
+    def _animate_activity_in(self, overlay: _ActivityOverlay):
+        self._stop_activity_animation(overlay)
+        if overlay._activity_target_rect is not None:
+            overlay.setFixedSize(overlay._activity_target_rect.size())
+            overlay.setGeometry(overlay._activity_target_rect)
         else:
             self._position_context_overlays()
         final_rect = QRect(overlay.geometry())
@@ -4577,11 +4667,11 @@ class MainWindow(QMainWindow):
             start_w,
             start_h,
         )
-        self._activity_target_rect = QRect(final_rect)
+        overlay._activity_target_rect = QRect(final_rect)
         overlay.setMinimumSize(0, 0)
         overlay.setMaximumSize(16777215, 16777215)
         overlay.setGeometry(start_rect)
-        self._activity_opacity.setOpacity(0.0)
+        overlay._activity_opacity.setOpacity(0.0)
         overlay.show()
         overlay.raise_()
 
@@ -4591,29 +4681,30 @@ class MainWindow(QMainWindow):
         geometry.setStartValue(start_rect)
         geometry.setEndValue(final_rect)
         geometry.setEasingCurve(QEasingCurve.Type.OutCubic)
-        opacity = QPropertyAnimation(self._activity_opacity, b"opacity", animation)
+        opacity = QPropertyAnimation(
+            overlay._activity_opacity, b"opacity", animation
+        )
         opacity.setDuration(190)
         opacity.setStartValue(0.0)
         opacity.setEndValue(1.0)
         opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.addAnimation(geometry)
         animation.addAnimation(opacity)
-        self._activity_animation = animation
+        overlay._activity_animation = animation
 
         def _finished():
-            if self._activity_animation is not animation:
+            if overlay._activity_animation is not animation:
                 return
             overlay.setGeometry(final_rect)
-            self._resize_activity_overlay()
-            self._activity_opacity.setOpacity(1.0)
-            self._activity_animation = None
+            self._resize_activity_overlay(overlay)
+            overlay._activity_opacity.setOpacity(1.0)
+            overlay._activity_animation = None
 
         animation.finished.connect(_finished)
         animation.start()
 
-    def _animate_activity_out(self):
-        self._stop_activity_animation()
-        overlay = self._activity_overlay
+    def _animate_activity_out(self, overlay: _ActivityOverlay):
+        self._stop_activity_animation(overlay)
         final_rect = QRect(overlay.geometry())
         end_w = max(1, int(final_rect.width() * 0.965))
         end_h = max(1, int(final_rect.height() * 0.965))
@@ -4632,62 +4723,84 @@ class MainWindow(QMainWindow):
         geometry.setStartValue(final_rect)
         geometry.setEndValue(end_rect)
         geometry.setEasingCurve(QEasingCurve.Type.InCubic)
-        opacity = QPropertyAnimation(self._activity_opacity, b"opacity", animation)
+        opacity = QPropertyAnimation(
+            overlay._activity_opacity, b"opacity", animation
+        )
         opacity.setDuration(125)
-        opacity.setStartValue(self._activity_opacity.opacity())
+        opacity.setStartValue(overlay._activity_opacity.opacity())
         opacity.setEndValue(0.0)
         opacity.setEasingCurve(QEasingCurve.Type.InCubic)
         animation.addAnimation(geometry)
         animation.addAnimation(opacity)
-        self._activity_animation = animation
+        overlay._activity_animation = animation
 
         def _finished():
-            if self._activity_animation is not animation:
+            if overlay._activity_animation is not animation:
                 return
             overlay.hide()
             overlay.setGeometry(final_rect)
-            self._resize_activity_overlay()
-            self._activity_opacity.setOpacity(1.0)
-            self._activity_animation = None
-            self._activity_hiding = False
+            self._resize_activity_overlay(overlay)
+            overlay._activity_opacity.setOpacity(1.0)
+            overlay._activity_animation = None
+            overlay._activity_hiding = False
+            if overlay in self._activity_overlays:
+                self._activity_overlays.remove(overlay)
+            if self._activity_active_overlay is overlay:
+                self._activity_active_overlay = None
+            overlay.deleteLater()
 
         animation.finished.connect(_finished)
         animation.start()
 
-    def _hide_activity(self):
-        if not hasattr(self, "_activity_overlay"):
+    def _close_activity_overlay(self, overlay: _ActivityOverlay):
+        if overlay not in self._activity_overlays:
             return
-        if not self._activity_overlay.isVisible():
-            self._activity_hiding = False
-            self._stop_activity_animation()
+        if not overlay.isVisible():
+            self._stop_activity_animation(overlay)
+            self._activity_overlays.remove(overlay)
+            if self._activity_active_overlay is overlay:
+                self._activity_active_overlay = None
+            overlay.deleteLater()
             return
-        self._activity_hiding = True
-        self._animate_activity_out()
+        overlay._activity_hiding = True
+        self._animate_activity_out(overlay)
 
     def _on_activity_event(self, text: str):
-        """Mirror existing log events into a persistent, readable JARVIS window."""
-        if not text or not hasattr(self, "_activity_display"):
+        """Route each conversation into its own persistent activity window."""
+        if not text or not hasattr(self, "_activity_overlays"):
             return
         raw = str(text).strip()
         if raw.startswith("You:"):
             line = "YOU     " + raw[4:].strip()
+            starts_conversation = True
         elif raw.startswith("ERR:"):
             line = "SYSTEM  ! " + raw[4:].strip()
+            starts_conversation = False
         elif raw.startswith("AI:"):
             line = "AI      " + raw[3:].strip()
+            starts_conversation = False
         else:
             line = "SYSTEM  " + raw
-        self._activity_lines.append(line)
-        self._activity_lines = self._activity_lines[-5:]
-        self._render_activity_display()
-        self._resize_activity_overlay()
-        self._position_context_overlays()
-        if not self._activity_overlay.isVisible() or self._activity_hiding:
-            self._activity_hiding = False
-            self._animate_activity_in()
+            starts_conversation = False
+
+        active = self._activity_active_overlay
+        if (starts_conversation or active is None
+                or active not in self._activity_overlays
+                or active._activity_hiding):
+            active = self._create_activity_overlay(line)
+            self._activity_active_overlay = active
         else:
-            self._activity_overlay.show()
-            self._activity_overlay.raise_()
+            active._activity_lines.append(line)
+            self._render_activity_display(active)
+            self._resize_activity_overlay(active)
+            self._position_context_overlays()
+
+        if not active.isVisible() or active._activity_hiding:
+            active._activity_hiding = False
+            self._animate_activity_in(active)
+        else:
+            active.show()
+            active.raise_()
 
     def _toggle_diagnostics(self, show: bool | None = None):
         if not hasattr(self, "_diagnostic_overlay"):
