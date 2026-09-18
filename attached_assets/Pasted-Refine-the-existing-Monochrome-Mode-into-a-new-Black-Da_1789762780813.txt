@@ -1,0 +1,190 @@
+Refine the existing Monochrome Mode into a new **Black + Dark Purple** theme.
+
+IMPORTANT:
+
+* Do NOT redesign the interface.
+* Do NOT change functionality, backend logic, commands, APIs, or behavior.
+* Preserve the current layout, orb, panels, command bar, animations, and interactions.
+* Only change the visual color system and related styling.
+* Keep the interface extremely clean, compact, smooth, and premium.
+
+### THEME DIRECTION
+
+Replace the current grayscale/gray monochrome appearance with a sophisticated:
+
+**BLACK + DARK SMOOTH PURPLE**
+
+The interface should feel like a premium futuristic AI system operating in a dark environment.
+
+The purple must be:
+
+* Deep
+* Dark
+* Smooth
+* Subtle
+* Elegant
+* Slightly atmospheric
+
+Do NOT use bright neon purple.
+
+Do NOT use saturated cyberpunk purple.
+
+Do NOT make the entire interface purple.
+
+The dominant color should remain BLACK.
+
+Purple should appear mainly as a subtle accent and glow.
+
+### COLOR HIERARCHY
+
+Use approximately this visual hierarchy:
+
+**Background**
+→ Almost pure black
+
+**Main surfaces**
+→ Extremely dark charcoal/black
+
+**Secondary surfaces**
+→ Black with a very subtle purple undertone
+
+**Borders**
+→ Very dark purple / subtle charcoal-purple
+
+**Primary text**
+→ Soft white
+
+**Secondary text**
+→ Muted gray
+
+**Active elements**
+→ Soft white with subtle purple accents
+
+**Core**
+→ Black/dark purple interior with controlled purple energy
+
+**Glow**
+→ Very subtle dark purple atmospheric glow
+
+The interface should still look mostly BLACK at first glance.
+
+The purple should reveal itself naturally through highlights, edges, reflections, and active states.
+
+### SYSTEM PANELS
+
+Apply the same black/dark-purple treatment to every small system panel around the orb.
+
+For example:
+
+LUA ONLINE
+LATENCY
+LIVE
+CPU
+MEM
+GPU
+NET
+TMP
+and all other telemetry/status indicators.
+
+Remove the old blue/cyan appearance completely.
+
+Instead:
+
+* Blue text → soft white or subtle purple
+* Blue borders → dark purple
+* Blue indicators → soft purple
+* Blue glow → dark purple glow
+* Blue progress indicators → purple
+* Blue highlights → subtle purple
+* Blue active states → purple/white
+
+Everything should belong to the same black-purple visual system.
+
+### ORB / AI CORE
+
+The orb should become the strongest source of purple.
+
+Keep the core predominantly dark.
+
+Add subtle layers of:
+
+* Deep purple energy
+* Dark violet highlights
+* Soft purple internal illumination
+* Extremely subtle purple particles
+* Purple edge lighting
+* Very restrained purple bloom
+
+The center should NOT become a giant purple ball.
+
+Instead, make it feel like a dark advanced AI processor with a controlled purple energy source inside.
+
+Think:
+
+**black technology + hidden purple energy**
+
+rather than:
+
+**purple technology + black background**
+
+### GLOW
+
+Keep the glow extremely smooth and atmospheric.
+
+Avoid hard neon edges.
+
+The purple light should gently fade into the black background.
+
+Use subtle gradients and soft bloom rather than obvious glowing outlines.
+
+The interface should feel almost cinematic.
+
+### PANELS AROUND THE ORB
+
+Keep the tiny floating/orbiting motion from the previous update.
+
+The panels should remain close to the orb and move only slightly.
+
+Their movement should feel like they are part of the same AI core system.
+
+Use subtle dark-purple highlights when they move or become active.
+
+### PROJECT: ZERO
+
+Keep the **Project: Zero** label precisely centered at the top.
+
+Keep the futuristic font from the previous update.
+
+Make the typography primarily soft white.
+
+Optionally add an extremely subtle dark-purple glow or accent line, but keep it restrained.
+
+### OVERALL FEEL
+
+The final interface should communicate:
+
+**BLACK**
+**DARK**
+**SMOOTH**
+**PURPLE**
+**PREMIUM**
+**MINIMAL**
+**FUTURISTIC**
+**AI**
+**CALM**
+
+It should look expensive and sophisticated rather than flashy.
+
+Avoid:
+
+* Neon purple
+* Bright violet
+* Cyberpunk aesthetics
+* Excessive glow
+* Purple everywhere
+* Bright colored panels
+* Large gradients
+* Clutter
+* Generic sci-fi HUD styling
+
+The final result should feel like a **dark AI operating system with subtle purple energy running underneath it.**

@@ -114,32 +114,32 @@ _MONOCHROME_MODE = False
 
 DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 
-# Monochrome is a designed palette rather than a colour filter.  The values
-# keep the existing depth hierarchy while avoiding the blue cast produced by
-# luminance-converting the original midnight palette.
+# Monochrome is a designed black-first palette rather than a colour filter.
+# Purple is reserved for depth, active states, and the core's energy.
 _MONOCHROME_PALETTE: dict[str, str] = {
-    "BG":       "#0b0d0f",
-    "PANEL":    "#121416",
-    "PANEL2":   "#1c1f22",
-    "BORDER":   "#2a2e32",
-    "BORDER_B": "#565c62",
-    "BORDER_A": "#3a3f45",
-    "PRI":      "#d7dadd",
-    "PRI_DIM":  "#90979e",
-    "PRI_GHO":  "#252a2f",
-    "ACC":      "#f1f2f3",
-    "ACC2":     "#c2c7cc",
-    "GREEN":    "#e2e4e7",
-    "GREEN_D":  "#8c9298",
-    "RED":      "#b7bbc0",
-    "MUTED_C":  "#8c9298",
-    "TEXT":     "#e4e6e8",
-    "TEXT_DIM": "#7c8288",
-    "TEXT_MED": "#aab0b6",
-    "WHITE":    "#f4f5f6",
-    "DARK":     "#0f1113",
-    "BAR_BG":   "#252a2e",
+    "BG":       "#07060a",
+    "PANEL":    "#0d0b11",
+    "PANEL2":   "#15111b",
+    "BORDER":   "#251a2d",
+    "BORDER_B": "#4c3658",
+    "BORDER_A": "#34243f",
+    "PRI":      "#d2c5da",
+    "PRI_DIM":  "#8d789b",
+    "PRI_GHO":  "#21152b",
+    "ACC":      "#e7d9eb",
+    "ACC2":     "#b49ac0",
+    "GREEN":    "#c7b5ce",
+    "GREEN_D":  "#765f80",
+    "RED":      "#a87f9c",
+    "MUTED_C":  "#896579",
+    "TEXT":     "#ddd4e1",
+    "TEXT_DIM": "#786d7e",
+    "TEXT_MED": "#a99caf",
+    "WHITE":    "#f0eaf3",
+    "DARK":     "#09070c",
+    "BAR_BG":   "#1a1221",
 }
+_MONOCHROME_HEXES = frozenset(value.lower() for value in _MONOCHROME_PALETTE.values())
 
 
 def apply_ui_accent(accent_hex: str) -> bool:
@@ -185,32 +185,58 @@ def current_palette() -> dict[str, str]:
     return {k: getattr(C, k) for k in _HUE_LINKED}
 
 
-def _grayscale_hex(hex_value: str) -> str:
-    """Return a perceptually weighted grayscale version of a six-digit colour."""
+def _monochrome_hex(hex_value: str) -> str:
+    """Map an arbitrary UI colour to restrained black-purple monochrome."""
+    import colorsys
+
     color = QColor(hex_value)
     if not color.isValid():
         return hex_value
-    level = round(0.2126 * color.red() + 0.7152 * color.green() +
-                  0.0722 * color.blue())
-    return f"#{level:02x}{level:02x}{level:02x}"
+    canonical = color.name().lower()
+    if canonical in _MONOCHROME_HEXES:
+        return canonical
+
+    red, green, blue = color.red(), color.green(), color.blue()
+    _hue, saturation, value = colorsys.rgb_to_hsv(
+        red / 255.0, green / 255.0, blue / 255.0,
+    )
+    luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255.0
+    if value < 0.08:
+        level = round(luminance * 255)
+        return f"#{level:02x}{max(0, level - 1):02x}{min(255, level + 3):02x}"
+    if saturation < 0.08:
+        level = round(luminance * 255)
+        return f"#{level:02x}{level:02x}{min(255, level + 2):02x}"
+
+    # Keep coloured source elements recognisable as active accents, but pull
+    # their hue into the same low-saturation violet family and cap brightness.
+    red, green, blue = colorsys.hsv_to_rgb(
+        0.77, min(0.30, max(0.12, saturation * 0.55)),
+        min(0.82, value * 0.92),
+    )
+    return "#{:02x}{:02x}{:02x}".format(
+        round(red * 255), round(green * 255), round(blue * 255),
+    )
 
 
-def _grayscale_stylesheet(stylesheet: str) -> str:
-    """Remove colour from stylesheet literals while preserving the existing CSS."""
+def _monochrome_stylesheet(stylesheet: str) -> str:
+    """Retheme stylesheet literals while preserving the existing CSS."""
     stylesheet = re.sub(
         r"#[0-9a-fA-F]{6}(?![0-9a-fA-F])",
-        lambda match: _grayscale_hex(match.group(0)),
+        lambda match: _monochrome_hex(match.group(0)),
         stylesheet,
     )
 
-    def _gray_rgb(match: re.Match) -> str:
+    def _mono_rgb(match: re.Match) -> str:
         red, green, blue = (int(match.group(index)) for index in (1, 2, 3))
-        level = round(0.2126 * red + 0.7152 * green + 0.0722 * blue)
-        return f"rgba({level}, {level}, {level}{match.group(4) or ''})"
+        mapped = _monochrome_hex(f"#{red:02x}{green:02x}{blue:02x}")
+        color = QColor(mapped)
+        return (f"rgba({color.red()}, {color.green()}, {color.blue()}"
+                f"{match.group(4) or ''})")
 
     return re.sub(
         r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(\s*,\s*[^)]+)?\)",
-        _gray_rgb,
+        _mono_rgb,
         stylesheet,
     )
 
@@ -261,7 +287,7 @@ def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
 def qcol(h: str, a: int = 255) -> QColor:
     c = QColor(h)
     if _MONOCHROME_MODE:
-        c = QColor(_grayscale_hex(c.name()))
+        c = QColor(_monochrome_hex(c.name()))
     c.setAlpha(a)
     return c
 
@@ -2144,8 +2170,8 @@ class HueWheel(QWidget):
         ang = self._hue * 2 * math.pi
         hx  = center.x() + r * math.cos(ang)
         hy  = center.y() - r * math.sin(ang)
-        p.setPen(QPen(QColor("#00060a"), 2))
-        p.setBrush(QBrush(QColor("#ffffff")))
+        p.setPen(QPen(qcol("#00060a"), 2))
+        p.setBrush(QBrush(qcol("#ffffff")))
         p.drawEllipse(QPointF(hx, hy), 7.5, 7.5)
         p.end()
 
@@ -5935,7 +5961,7 @@ class MainWindow(QMainWindow):
                 continue
             self._monochrome_style_cache[widget] = stylesheet
             try:
-                widget.setStyleSheet(_grayscale_stylesheet(stylesheet))
+                widget.setStyleSheet(_monochrome_stylesheet(stylesheet))
             except RuntimeError:
                 pass
 
