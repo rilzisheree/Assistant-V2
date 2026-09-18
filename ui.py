@@ -4,6 +4,7 @@ import json
 import math
 import os
 import platform
+import re
 import random
 import subprocess
 import sys
@@ -28,7 +29,7 @@ from PyQt6.QtGui import (
     QPen, QPixmap, QRadialGradient, QShortcut,
 )
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
 )
@@ -104,6 +105,12 @@ _HUE_LINKED = (
     "WHITE", "DARK", "BAR_BG",
 )
 _PALETTE_DEFAULTS: dict[str, str] = {k: getattr(C, k) for k in _HUE_LINKED}
+_COLOR_KEYS = tuple(
+    key for key, value in vars(C).items()
+    if key.isupper() and isinstance(value, str) and value.startswith("#")
+)
+_COLOR_DEFAULTS: dict[str, str] = {key: getattr(C, key) for key in _COLOR_KEYS}
+_MONOCHROME_MODE = False
 
 DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 
@@ -151,6 +158,50 @@ def current_palette() -> dict[str, str]:
     return {k: getattr(C, k) for k in _HUE_LINKED}
 
 
+def _grayscale_hex(hex_value: str) -> str:
+    """Return a perceptually weighted grayscale version of a six-digit colour."""
+    color = QColor(hex_value)
+    if not color.isValid():
+        return hex_value
+    level = round(0.2126 * color.red() + 0.7152 * color.green() +
+                  0.0722 * color.blue())
+    return f"#{level:02x}{level:02x}{level:02x}"
+
+
+def _grayscale_stylesheet(stylesheet: str) -> str:
+    """Remove colour from stylesheet literals while preserving the existing CSS."""
+    stylesheet = re.sub(
+        r"#[0-9a-fA-F]{6}(?![0-9a-fA-F])",
+        lambda match: _grayscale_hex(match.group(0)),
+        stylesheet,
+    )
+
+    def _gray_rgb(match: re.Match) -> str:
+        red, green, blue = (int(match.group(index)) for index in (1, 2, 3))
+        level = round(0.2126 * red + 0.7152 * green + 0.0722 * blue)
+        return f"rgba({level}, {level}, {level}{match.group(4) or ''})"
+
+    return re.sub(
+        r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(\s*,\s*[^)]+)?\)",
+        _gray_rgb,
+        stylesheet,
+    )
+
+
+def apply_ui_theme(accent_hex: str, monochrome: bool) -> bool:
+    """Reset the palette, apply the selected accent, then optionally desaturate it."""
+    global _MONOCHROME_MODE
+    for key, value in _COLOR_DEFAULTS.items():
+        setattr(C, key, value)
+    if not apply_ui_accent(accent_hex or DEFAULT_UI_COLOR):
+        return False
+    if monochrome:
+        for key in _COLOR_KEYS:
+            setattr(C, key, _grayscale_hex(getattr(C, key)))
+    _MONOCHROME_MODE = monochrome
+    return True
+
+
 def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
     """
     LIVE full theme change. Replaces the old palette colours with the new ones
@@ -181,7 +232,11 @@ def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
 
 
 def qcol(h: str, a: int = 255) -> QColor:
-    c = QColor(h); c.setAlpha(a); return c
+    c = QColor(h)
+    if _MONOCHROME_MODE:
+        c = QColor(_grayscale_hex(c.name()))
+    c.setAlpha(a)
+    return c
 
 
 # ── Windows GPU via NVML DLL (no subprocess, no console window) ──────────────
@@ -2084,11 +2139,11 @@ class HueWheel(QWidget):
 class CustomizeOverlay(QWidget):
     """Floating overlay — change assistant name, user name, UI colour and voice."""
 
-    saved = pyqtSignal(str, str, str, str)   # assistant_name, user_name, ui_color, voice
-    _OW, _OH = 400, 588
+    saved = pyqtSignal(str, str, str, str, bool)  # name, user, colour, voice, monochrome
+    _OW, _OH = 400, 632
 
     def __init__(self, assistant_name="JARVIS", user_name="",
-                 ui_color=DEFAULT_UI_COLOR, voice="", parent=None):
+                 ui_color=DEFAULT_UI_COLOR, voice="", monochrome=False, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -2159,6 +2214,38 @@ class CustomizeOverlay(QWidget):
             voice_row.addWidget(b)
         lay.addLayout(voice_row)
         self._refresh_voice_btns()
+
+        # ── Monochrome mode ─────────────────────────────────────────────────
+        lay.addSpacing(4)
+        self._mono_check = QCheckBox("MONOCHROME MODE")
+        self._mono_check.setChecked(bool(monochrome))
+        self._mono_check.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        self._mono_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._mono_check.setStyleSheet(f"""
+            QCheckBox {{
+                color: {C.TEXT_DIM};
+                background: transparent;
+                spacing: 7px;
+            }}
+            QCheckBox:hover {{ color: {C.TEXT}; }}
+            QCheckBox::indicator {{
+                width: 13px; height: 13px;
+                border: 1px solid {C.BORDER};
+                border-radius: 2px;
+                background: transparent;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {C.PRI};
+                border: 1px solid {C.PRI};
+            }}
+        """)
+        lay.addWidget(self._mono_check)
+        mono_desc = _lbl(
+            "Switch the interface between colour and black-and-white.",
+            7, color=C.TEXT_DIM, align=Qt.AlignmentFlag.AlignLeft,
+        )
+        mono_desc.setWordWrap(True)
+        lay.addWidget(mono_desc)
 
         # ── UI colour — colour wheel ─────────────────────────────────────────
         lay.addSpacing(4)
@@ -2295,7 +2382,10 @@ class CustomizeOverlay(QWidget):
     def _save(self):
         name = self._name_input.text().strip() or "JARVIS"
         user = self._user_input.text().strip()
-        self.saved.emit(name, user, self._sel_color or DEFAULT_UI_COLOR, self._sel_voice)
+        self.saved.emit(
+            name, user, self._sel_color or DEFAULT_UI_COLOR,
+            self._sel_voice, self._mono_check.isChecked(),
+        )
         self.hide()
 
 
@@ -3431,11 +3521,12 @@ class MainWindow(QMainWindow):
         _cfg = _read_full_config()
         self._assistant_name: str = (_cfg.get("assistant_name") or "JARVIS").strip()
         _display = self._assistant_name.upper()
+        self._ui_color = (_cfg.get("ui_color") or DEFAULT_UI_COLOR).strip().lower()
+        self._monochrome_mode = bool(_cfg.get("monochrome_mode", False))
+        self._monochrome_style_cache: dict[QWidget, str] = {}
 
         # Apply the saved UI colour BEFORE panels/stylesheets are built
-        _ui_color = (_cfg.get("ui_color") or "").strip()
-        if _ui_color and _ui_color.lower() != DEFAULT_UI_COLOR:
-            apply_ui_accent(_ui_color)
+        apply_ui_theme(self._ui_color, self._monochrome_mode)
 
         self.setWindowTitle(f"{_display} — {APP_VERSION}")
         self.setMinimumSize(_MIN_W, _MIN_H)
@@ -3625,6 +3716,8 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
         self._build_context_overlays()
         self._log._sig.connect(self._on_activity_event)
+        if self._monochrome_mode:
+            self._apply_monochrome_stylesheets()
 
         self._overlay: SetupOverlay | None = None
         self._ready = self._check_config()
@@ -4339,7 +4432,7 @@ class MainWindow(QMainWindow):
             l.setStyleSheet(f"color: {color}; background: transparent;")
             return l
 
-        lay.addWidget(_badge("◈  " + APP_VERSION, C.PRI_DIM))
+        lay.addWidget(_badge("◈  Project: Zero", C.PRI_DIM))
         lay.addSpacing(8)
         self._drawer_btn = QPushButton("⚙")
         self._drawer_btn.setFixedSize(26, 26)
@@ -4379,16 +4472,12 @@ class MainWindow(QMainWindow):
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
-        _disp = self._assistant_name.upper()
-        self._title_lbl = QLabel(_disp)
+        self._title_lbl = QLabel("Project: Zero")
         self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._title_lbl.setFont(QFont("Courier New", 18, QFont.Weight.Bold))
         self._title_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         mid.addWidget(self._title_lbl)
-        _sub_text = ("A Friendly Assistant"
-                     if _disp in ("JARVIS", "J.A.R.V.I.S")
-                     else "Personal AI Assistant")
-        self._sub_lbl = QLabel(_sub_text)
+        self._sub_lbl = QLabel("")
         self._sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub_lbl.setFont(QFont("Courier New", 7))
         self._sub_lbl.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent;")
@@ -5315,9 +5404,7 @@ class MainWindow(QMainWindow):
             l.setStyleSheet(f"color: {color}; background: transparent;")
             return l
 
-        lay.addWidget(_fl("[F4] Mute  ·  [F11] Fullscreen"))
         lay.addStretch()
-        lay.addWidget(_fl("By FatihMakes", C.PRI_DIM))
         return w
 
     def _on_file_selected(self, path: str):
@@ -5733,6 +5820,7 @@ class MainWindow(QMainWindow):
             cfg.get("user_name", ""),
             cfg.get("ui_color", "") or DEFAULT_UI_COLOR,
             cfg.get("voice_name", ""),
+            bool(cfg.get("monochrome_mode", False)),
             parent=cw,
         )
         ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
@@ -5749,31 +5837,87 @@ class MainWindow(QMainWindow):
 
     def _preview_ui_color(self, hex_color: str):
         """Live preview — paints the whole interface the new colour (does NOT write to config)."""
+        hex_color = (hex_color or DEFAULT_UI_COLOR).strip().lower()
+        if self._monochrome_mode and self._ui_color != hex_color:
+            old_underlying = self._ui_color
+            old = current_palette()
+            apply_ui_theme(old_underlying, False)
+            old_color_palette = current_palette()
+            apply_ui_theme(hex_color, False)
+            new_color_palette = current_palette()
+            mapping = {
+                old_color_palette[k].lower(): new_color_palette[k].lower()
+                for k in old_color_palette
+                if old_color_palette[k].lower() != new_color_palette[k].lower()
+            }
+            for widget, stylesheet in list(self._monochrome_style_cache.items()):
+                updated = stylesheet
+                for old_hex, new_hex in mapping.items():
+                    updated = updated.replace(old_hex, new_hex)
+                self._monochrome_style_cache[widget] = updated
+            apply_ui_theme(hex_color, True)
+            self._ui_color = hex_color
+            return
         old = current_palette()
-        if apply_ui_accent(hex_color):
+        if apply_ui_theme(hex_color, self._monochrome_mode):
             retheme_all_widgets(old, current_palette())
+            self._ui_color = hex_color
+
+    def _set_monochrome_mode(self, enabled: bool):
+        """Switch the palette and existing stylesheets without changing layout."""
+        enabled = bool(enabled)
+        if enabled == self._monochrome_mode:
+            return
+
+        if enabled:
+            apply_ui_theme(self._ui_color, True)
+            self._apply_monochrome_stylesheets()
+        else:
+            apply_ui_theme(self._ui_color, False)
+            for widget, stylesheet in self._monochrome_style_cache.items():
+                try:
+                    widget.setStyleSheet(stylesheet)
+                except RuntimeError:
+                    pass
+            self._monochrome_style_cache.clear()
+        self._monochrome_mode = enabled
+        for widget in QApplication.instance().allWidgets():
+            widget.update()
+
+    def _apply_monochrome_stylesheets(self):
+        """Cache and desaturate existing widget stylesheets."""
+        self._monochrome_style_cache = {}
+        for widget in QApplication.instance().allWidgets():
+            stylesheet = widget.styleSheet()
+            if not stylesheet:
+                continue
+            self._monochrome_style_cache[widget] = stylesheet
+            try:
+                widget.setStyleSheet(_grayscale_stylesheet(stylesheet))
+            except RuntimeError:
+                pass
 
     def _apply_name_update(self, name: str, user_name: str, ui_color: str = "",
-                           voice: str = ""):
+                           voice: str = "", monochrome: bool = False):
         """Update all name/theme-dependent UI elements and persist to config."""
         self._assistant_name = name.strip() or "JARVIS"
         display = self._assistant_name.upper()
         self.setWindowTitle(f"{display} — {APP_VERSION}")
-        self._title_lbl.setText(display)
-        if display in ("JARVIS", "J.A.R.V.I.S"):
-            self._sub_lbl.setText("Just A Rather Very Intelligent System")
-        else:
-            self._sub_lbl.setText("Personal AI Assistant")
+        self._title_lbl.setText("Project: Zero")
+        self._sub_lbl.setText("")
         self._log._ai_name_lc = self._assistant_name.lower()
         self.hud._assistant_name = display
 
         color_changed = False
         if ui_color:
             old = current_palette()
-            if apply_ui_accent(ui_color):
+            if apply_ui_theme(ui_color, self._monochrome_mode):
                 # Live-paint the whole interface (panels, buttons, borders, HUD)
                 retheme_all_widgets(old, current_palette())
                 color_changed = old["PRI"] != C.PRI
+                self._ui_color = ui_color.strip().lower()
+
+        self._set_monochrome_mode(monochrome)
 
         # Voice change → persist and, if it actually changed, rebuild the Live
         # session so the new voice takes effect (it's fixed at connect time).
@@ -5790,6 +5934,7 @@ class MainWindow(QMainWindow):
             data["user_name"] = user_name.strip()
             if ui_color:
                 data["ui_color"] = ui_color.strip().lower()
+            data["monochrome_mode"] = self._monochrome_mode
             API_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
             self._log.append_log(f"SYS: Identity updated — {display}")
             if color_changed:
