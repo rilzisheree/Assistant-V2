@@ -1,0 +1,85 @@
+Redesign ONLY the large central AI core / reactor area of this existing interface.
+
+Use the attached reference image as INSPIRATION for the concept and composition, but do NOT copy its visual style.
+
+The current central interface consists of many concentric circular HUD rings surrounding the "LUA" core.
+
+REMOVE THAT ENTIRE RING-BASED VISUAL SYSTEM.
+
+I want the center completely reimagined as a single beautiful, modern AI intelligence core.
+
+CORE CONCEPT:
+
+Create one central 3D / volumetric AI core that feels like a living digital intelligence.
+
+The core should be:
+
+* A translucent glass-like sphere or organic digital orb
+* Softly illuminated from within
+* Deep blue / indigo with subtle cyan and violet energy
+* Filled with extremely fine flowing particles, light, or energy
+* Slightly transparent
+* Sophisticated and realistic
+* Calm and mesmerizing
+* Subtle rather than flashy
+
+The core should feel like "an AI thinking" rather than "a spaceship reactor."
+
+Around the core, introduce a small number of floating contextual information elements inspired by the reference image.
+
+For example:
+
+* PROCESSING
+* VOICE ACTIVE
+* MEMORY
+* READY
+* CURRENT TASK
+* small contextual system information
+
+These should appear as small, elegant floating labels/cards positioned around the core.
+
+Use extremely thin connecting lines from some labels toward relevant areas of the core.
+
+IMPORTANT:
+There should be NO large concentric rings surrounding the core.
+
+Do not use:
+
+* radar circles
+* circular HUD rings
+* targeting reticles
+* giant rotating rings
+* spaceship reactor graphics
+* excessive technical markings
+* military HUD styling
+* cyberpunk clutter
+* giant neon effects
+
+Instead, make the composition feel like a modern premium AI interface.
+
+VISUAL DIRECTION:
+
+Think:
+modern AI product + digital consciousness + glass + subtle volumetric light.
+
+Not:
+spaceship + radar + military computer + cyberpunk HUD.
+
+The central core should become the visual focal point of the entire application.
+
+Keep "LUA" subtly integrated into the core, but do not place giant text over it.
+
+The core should occupy approximately the same central area as the current reactor so the surrounding UI layout does not need to change.
+
+The floating information elements should remain inside the existing central workspace and must not overlap the left or right panels.
+
+Use subtle depth, soft shadows, glass translucency, particle movement, and very restrained glow.
+
+The result should look like a premium AI operating system from the near future.
+
+MOST IMPORTANT:
+This is a redesign of the CENTRAL CORE ONLY.
+Do not modify the header, left system monitor, right activity log, file upload section, bottom command bar, or bottom-left status area.
+
+Preserve all existing functionality and layout dimensions.
+Only replace the visual design of the central AI core.

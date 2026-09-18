@@ -674,6 +674,193 @@ class HudCanvas(QWidget):
             return qcol(C.PRI), qcol(C.GREEN)
         return qcol(C.PRI), qcol(C.PRI_DIM)
 
+    def _paint_core_orb(self, p: QPainter, cx: float, cy: float, r: float,
+                        W: float = 0.0, H: float = 0.0):
+        """Paint the calm volumetric intelligence core.
+
+        This deliberately avoids the old reactor language: no radar circles,
+        targeting marks, rotating rings, or concentric technical scales. The
+        animation is carried by slow internal wisps and fine particles inside
+        one translucent glass-like volume.
+        """
+        main, acc = self._core_colours()
+        t = self._core_phase
+        amp = self._amp_disp
+        state = self.state.upper()
+        orb_r = min(r * 0.72, max(78.0, min(W, H) * 0.34))
+        orb = QRectF(cx - orb_r, cy - orb_r, orb_r * 2, orb_r * 2)
+
+        def mix(col: QColor, amount: float) -> QColor:
+            amount = max(0.0, min(1.0, amount))
+            base = QColor(C.BG)
+            return QColor(
+                int(base.red() + (col.red() - base.red()) * amount),
+                int(base.green() + (col.green() - base.green()) * amount),
+                int(base.blue() + (col.blue() - base.blue()) * amount),
+            )
+
+        # Wide, low-opacity aura: atmospheric depth without a neon halo.
+        aura = QRadialGradient(cx - orb_r * 0.08, cy - orb_r * 0.12, orb_r * 1.35)
+        aura.setColorAt(0.0, qcol(main.name(), 70 + int(amp * 24)))
+        aura.setColorAt(0.42, qcol("#3c5ca8", 34))
+        aura.setColorAt(0.78, qcol("#33205f", 18))
+        aura.setColorAt(1.0, qcol(C.BG, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(aura))
+        p.drawEllipse(QRectF(cx - orb_r * 1.35, cy - orb_r * 1.35,
+                             orb_r * 2.7, orb_r * 2.7))
+
+        # The single glass volume. A cool highlight at upper-left and an
+        # indigo falloff at the lower-right make it read as dimensional.
+        sphere = QRadialGradient(cx - orb_r * 0.28, cy - orb_r * 0.34,
+                                 orb_r * 1.18)
+        sphere.setColorAt(0.00, qcol(C.WHITE, 115))
+        sphere.setColorAt(0.10, qcol(main.name(), 108))
+        sphere.setColorAt(0.34, qcol("#3d78b8", 92))
+        sphere.setColorAt(0.66, qcol("#241f60", 180))
+        sphere.setColorAt(0.88, qcol("#0c183e", 232))
+        sphere.setColorAt(1.00, qcol(C.BG, 245))
+        p.setBrush(QBrush(sphere))
+        p.drawEllipse(orb)
+
+        # Fine internal energy flow clipped to the sphere. The paths drift
+        # slowly so the core feels alive without turning into a screen saver.
+        sphere_path = QPainterPath()
+        sphere_path.addEllipse(orb)
+        p.save()
+        p.setClipPath(sphere_path)
+
+        for k, (offset, width, colour, opacity) in enumerate((
+            (-0.46, 1.7, main, 105),
+            (0.03, 1.15, acc, 82),
+            (0.39, 1.35, QColor("#9d83ff"), 62),
+        )):
+            path = QPainterPath()
+            for i in range(31):
+                x = cx - orb_r * 1.18 + i * (orb_r * 2.36 / 30.0)
+                phase = t * (0.34 + k * 0.07) + i * 0.29 + k * 1.4
+                y = cy + offset * orb_r + math.sin(phase) * orb_r * 0.11
+                y += math.sin(phase * 0.47 + 1.8) * orb_r * 0.055
+                if i == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+            p.setPen(QPen(colour, width))
+            pen_col = mix(colour, 0.5)
+            pen_col.setAlpha(opacity + int(amp * 24))
+            p.setPen(QPen(pen_col, width))
+            p.drawPath(path)
+
+        # A second set of diagonal filaments adds volume while keeping the
+        # visual language organic instead of mechanical.
+        for k in range(2):
+            path = QPainterPath()
+            for i in range(24):
+                y = cy - orb_r * 1.1 + i * (orb_r * 2.2 / 23.0)
+                phase = t * 0.25 + i * 0.42 + k * 2.3
+                x = cx + (k - 0.5) * orb_r * 0.72 + math.sin(phase) * orb_r * 0.16
+                if i == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+            filament = mix(acc if k else main, 0.48)
+            filament.setAlpha(38 + int(amp * 18))
+            p.setPen(QPen(filament, 1.0))
+            p.drawPath(path)
+
+        # Deterministic particles: tiny points drift along the internal flow
+        # and never jump because their seed is derived from their index.
+        for i in range(64):
+            seed = i * 1.61803398875
+            radial = 0.16 + (i % 11) / 14.0
+            angle = seed + t * (0.08 + (i % 5) * 0.012)
+            wobble = math.sin(t * 0.42 + seed * 1.7) * 0.07
+            px = cx + math.cos(angle) * orb_r * (radial + wobble)
+            py = cy + math.sin(angle * 1.21) * orb_r * (radial * 0.72 + wobble)
+            if ((px - cx) / orb_r) ** 2 + ((py - cy) / orb_r) ** 2 <= 0.88:
+                col = main if i % 3 else acc
+                dot = mix(col, 0.72)
+                dot.setAlpha(80 + int(65 * (0.5 + 0.5 * math.sin(seed + t))))
+                size = 1.0 + (i % 3) * 0.45
+                p.setBrush(QBrush(dot))
+                p.setPen(Qt.PenStyle.NoPen)
+                p.drawEllipse(QRectF(px - size, py - size, size * 2, size * 2))
+
+        # Soft glass glint across the upper-left surface.
+        glint = QPainterPath()
+        glint.moveTo(cx - orb_r * 0.62, cy - orb_r * 0.48)
+        glint.cubicTo(cx - orb_r * 0.30, cy - orb_r * 0.78,
+                      cx + orb_r * 0.12, cy - orb_r * 0.72,
+                      cx + orb_r * 0.40, cy - orb_r * 0.51)
+        shine = QColor(C.WHITE)
+        shine.setAlpha(72)
+        p.setPen(QPen(shine, 2.2))
+        p.drawPath(glint)
+        p.restore()
+
+        # Subtle identity mark inside the volume, never giant text over it.
+        name = self._assistant_name or "LUA"
+        font = QFont("Segoe UI", max(11, int(orb_r * 0.115)),
+                     QFont.Weight.DemiBold)
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2.0)
+        p.setFont(font)
+        identity = QColor(C.WHITE)
+        identity.setAlpha(182)
+        p.setPen(QPen(identity, 1))
+        p.drawText(orb, Qt.AlignmentFlag.AlignCenter, name)
+
+        # Sparse contextual callouts sit outside the volume and stay within the
+        # central workspace. Their lines point inward without becoming a HUD.
+        labels = [
+            ("PROCESSING" if state in ("THINKING", "PROCESSING")
+             else "READY", "MODEL / LIVE", -1, -0.42),
+            ("VOICE ACTIVE" if self.speaking else "VOICE STANDBY",
+             "AUDIO CHANNEL", 1, -0.28),
+            ("MEMORY", "LOCAL CONTEXT", -1, 0.34),
+            ("CURRENT TASK", state.replace("_", " "), 1, 0.38),
+        ]
+        card_w = max(102.0, min(142.0, orb_r * 0.82))
+        card_h = 34.0
+        for title, detail, side, y_ratio in labels:
+            card_x = cx + side * (orb_r + card_w * 0.62)
+            card_y = cy + y_ratio * orb_r - card_h * 0.5
+            if side < 0:
+                card_x -= card_w
+                line_x = card_x + card_w
+            else:
+                line_x = card_x
+            card_x = max(6.0, min(W - card_w - 6.0, card_x))
+            card_y = max(8.0, min(H - card_h - 8.0, card_y))
+            line_x = card_x + card_w if side < 0 else card_x
+            anchor_x = cx + side * orb_r * 0.74
+            anchor_y = cy + y_ratio * orb_r
+            connector = mix(acc if title == "VOICE ACTIVE" else main, 0.42)
+            connector.setAlpha(100)
+            p.setPen(QPen(connector, 1.0))
+            p.drawLine(QLineF(line_x, card_y + card_h * 0.5,
+                              anchor_x, anchor_y))
+
+            card = QColor("#0b2037")
+            card.setAlpha(188)
+            p.setBrush(QBrush(card))
+            border = mix(main, 0.32)
+            border.setAlpha(120)
+            p.setPen(QPen(border, 1.0))
+            p.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), 7, 7)
+
+            p.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+            text_col = QColor(C.WHITE)
+            text_col.setAlpha(190)
+            p.setPen(QPen(text_col, 1))
+            p.drawText(QRectF(card_x + 8, card_y + 5, card_w - 16, 11),
+                       Qt.AlignmentFlag.AlignLeft, title)
+            detail_col = mix(acc if title == "VOICE ACTIVE" else main, 0.72)
+            detail_col.setAlpha(190)
+            p.setPen(QPen(detail_col, 1))
+            p.setFont(QFont("Courier New", 6))
+            p.drawText(QRectF(card_x + 8, card_y + 18, card_w - 16, 10),
+                       Qt.AlignmentFlag.AlignLeft, detail)
+
     def _paint_core(self, p: QPainter, cx: float, cy: float, r: float,
                     W: float = 0.0, H: float = 0.0):
         """Draw the reactor at (cx, cy) with outer radius r, using the whole
@@ -904,7 +1091,7 @@ class HudCanvas(QWidget):
             _band_t = 12.0
             _band_h = max(60.0, _sy_status - 12.0 - _band_t)
             _r = min(W * 0.46, _band_h / 2.0)
-            self._paint_core(p, cx, _band_t + _band_h / 2.0, _r, W, _band_h)
+            self._paint_core_orb(p, cx, _band_t + _band_h / 2.0, _r, W, _band_h)
 
         # status text
         sy = _sy_status
