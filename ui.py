@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import html
 import math
 import os
 import platform
@@ -27,7 +28,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
     QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
-    QPen, QPixmap, QRadialGradient, QShortcut,
+    QPen, QPixmap, QRadialGradient, QShortcut, QTextOption,
 )
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
@@ -4341,7 +4342,11 @@ class MainWindow(QMainWindow):
         self._activity_overlay = _ActivityOverlay(cw)
         self._activity_overlay.setObjectName("ContextPanel")
         self._activity_overlay.setStyleSheet(panel_style)
-        self._activity_overlay.setFixedSize(348, 142)
+        self._activity_overlay.setMinimumSize(348, 142)
+        self._activity_overlay.setMaximumSize(560, 420)
+        self._activity_overlay.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         self._activity_opacity = QGraphicsOpacityEffect(self._activity_overlay)
         self._activity_opacity.setOpacity(1.0)
         self._activity_overlay.setGraphicsEffect(self._activity_opacity)
@@ -4357,13 +4362,17 @@ class MainWindow(QMainWindow):
         activity_hdr_lay.setSpacing(4)
         activity_title = QLabel("◈  ACTIVITY / LIVE")
         activity_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        activity_title.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        activity_title_font = QFont("Courier New", QFont.Weight.Bold)
+        activity_title_font.setPointSizeF(7.8)
+        activity_title.setFont(activity_title_font)
         activity_title.setStyleSheet(f"color: {C.PRI};")
         activity_hdr_lay.addWidget(activity_title)
         activity_hdr_lay.addStretch()
-        activity_state = QLabel("TRANSIENT")
+        activity_state = QLabel("PERSISTENT")
         activity_state.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        activity_state.setFont(QFont("Courier New", 5))
+        activity_state_font = QFont("Courier New")
+        activity_state_font.setPointSizeF(5.5)
+        activity_state.setFont(activity_state_font)
         activity_state.setStyleSheet(f"color: {C.TEXT_DIM};")
         activity_hdr_lay.addWidget(activity_state)
         close_activity = QPushButton("×")
@@ -4380,7 +4389,21 @@ class MainWindow(QMainWindow):
         activity_lay.addWidget(activity_hdr)
         self._activity_display = QTextEdit()
         self._activity_display.setReadOnly(True)
-        self._activity_display.setFont(QFont("Courier New", 6))
+        display_font = QFont("Courier New")
+        display_font.setPointSizeF(6.7)
+        self._activity_display.setFont(display_font)
+        self._activity_display.setLineWrapMode(
+            QTextEdit.LineWrapMode.WidgetWidth
+        )
+        self._activity_display.setWordWrapMode(
+            QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        )
+        self._activity_display.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._activity_display.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         activity_lay.addWidget(self._activity_display, stretch=1)
         self._activity_overlay.hide()
 
@@ -4417,10 +4440,6 @@ class MainWindow(QMainWindow):
             self._diagnostic_rows[key] = row
             diag_lay.addWidget(row)
         self._diagnostic_overlay.hide()
-
-        self._activity_timer = QTimer(self)
-        self._activity_timer.setSingleShot(True)
-        self._activity_timer.timeout.connect(self._hide_activity)
 
     def _remember_activity_position(self, position: QPoint):
         self._activity_user_position = self._clamp_activity_position(position)
@@ -4462,6 +4481,78 @@ class MainWindow(QMainWindow):
         if (not self._activity_overlay.isVisible()
                 and getattr(self, "_activity_animation", None) is None):
             self._activity_target_rect = QRect(self._activity_overlay.geometry())
+
+    def _resize_activity_overlay(self):
+        """Fit the activity panel to its content without letting it run away."""
+        if not hasattr(self, "_activity_display"):
+            return
+
+        cw = self.centralWidget()
+        if cw is None:
+            return
+
+        min_w, min_h = 348, 142
+        max_w = min(560, max(min_w, cw.width() - 20))
+        max_h = min(420, max(min_h, cw.height() - 78))
+        display = self._activity_display
+
+        # The longest unwrapped line determines whether a wider panel will
+        # make the message substantially easier to read. The upper bound
+        # keeps a single very long response from taking over the HUD.
+        metrics = display.fontMetrics()
+        longest_line = max(
+            (
+                metrics.horizontalAdvance(part)
+                for entry in self._activity_lines
+                for part in entry.splitlines()
+            ),
+            default=0,
+        )
+        target_w = max(min_w, min(max_w, longest_line + 48))
+
+        # Animation completion leaves the panel at a fixed size. Release those
+        # temporary constraints before measuring the next event.
+        self._activity_overlay.setMinimumSize(0, 0)
+        self._activity_overlay.setMaximumSize(16777215, 16777215)
+        self._activity_overlay.resize(target_w, min_h)
+
+        # Account for the panel margins, QTextEdit frame, and text padding.
+        text_width = max(1, target_w - 32)
+        document = display.document()
+        document.setTextWidth(text_width)
+        document_height = document.documentLayout().documentSize().height()
+        chrome_height = 56
+        target_h = max(
+            min_h,
+            min(max_h, math.ceil(document_height + chrome_height)),
+        )
+        self._activity_overlay.resize(target_w, target_h)
+        self._activity_overlay.setMinimumSize(min_w, min_h)
+        self._activity_overlay.setMaximumSize(max_w, max_h)
+
+    def _render_activity_display(self):
+        """Render activity entries with compact hierarchy and readable spacing."""
+        rows = []
+        for entry in self._activity_lines:
+            if entry.startswith("YOU     "):
+                label, color = "YOU", C.ACC
+                body = entry[8:]
+            elif entry.startswith("AI      "):
+                label, color = "AI", C.PRI
+                body = entry[8:]
+            else:
+                label, color = "SYSTEM", C.TEXT_MED
+                body = entry[8:] if entry.startswith("SYSTEM  ") else entry
+            body_html = html.escape(body).replace("\n", "<br/>")
+            rows.append(
+                f'<div style="line-height:115%; margin:0 0 3px 0;">'
+                f'<span style="color:{color}; font-weight:600;">'
+                f'{label:<6}</span>{body_html}</div>'
+            )
+        self._activity_display.setHtml("".join(rows))
+        self._activity_display.moveCursor(
+            self._activity_display.textCursor().MoveOperation.End
+        )
 
     def _stop_activity_animation(self):
         animation = getattr(self, "_activity_animation", None)
@@ -4513,7 +4604,7 @@ class MainWindow(QMainWindow):
             if self._activity_animation is not animation:
                 return
             overlay.setGeometry(final_rect)
-            overlay.setFixedSize(final_rect.size())
+            self._resize_activity_overlay()
             self._activity_opacity.setOpacity(1.0)
             self._activity_animation = None
 
@@ -4555,7 +4646,7 @@ class MainWindow(QMainWindow):
                 return
             overlay.hide()
             overlay.setGeometry(final_rect)
-            overlay.setFixedSize(final_rect.size())
+            self._resize_activity_overlay()
             self._activity_opacity.setOpacity(1.0)
             self._activity_animation = None
             self._activity_hiding = False
@@ -4564,8 +4655,6 @@ class MainWindow(QMainWindow):
         animation.start()
 
     def _hide_activity(self):
-        if hasattr(self, "_activity_timer"):
-            self._activity_timer.stop()
         if not hasattr(self, "_activity_overlay"):
             return
         if not self._activity_overlay.isVisible():
@@ -4576,10 +4665,10 @@ class MainWindow(QMainWindow):
         self._animate_activity_out()
 
     def _on_activity_event(self, text: str):
-        """Mirror existing log events into a short-lived JARVIS window."""
+        """Mirror existing log events into a persistent, readable JARVIS window."""
         if not text or not hasattr(self, "_activity_display"):
             return
-        raw = str(text).strip().replace("\n", "  ")
+        raw = str(text).strip()
         if raw.startswith("You:"):
             line = "YOU     " + raw[4:].strip()
         elif raw.startswith("ERR:"):
@@ -4588,12 +4677,10 @@ class MainWindow(QMainWindow):
             line = "AI      " + raw[3:].strip()
         else:
             line = "SYSTEM  " + raw
-        self._activity_lines.append(line[:150])
+        self._activity_lines.append(line)
         self._activity_lines = self._activity_lines[-5:]
-        self._activity_display.setPlainText("\n".join(self._activity_lines))
-        self._activity_display.moveCursor(
-            self._activity_display.textCursor().MoveOperation.End
-        )
+        self._render_activity_display()
+        self._resize_activity_overlay()
         self._position_context_overlays()
         if not self._activity_overlay.isVisible() or self._activity_hiding:
             self._activity_hiding = False
@@ -4601,7 +4688,6 @@ class MainWindow(QMainWindow):
         else:
             self._activity_overlay.show()
             self._activity_overlay.raise_()
-        self._activity_timer.start(8500)
 
     def _toggle_diagnostics(self, show: bool | None = None):
         if not hasattr(self, "_diagnostic_overlay"):

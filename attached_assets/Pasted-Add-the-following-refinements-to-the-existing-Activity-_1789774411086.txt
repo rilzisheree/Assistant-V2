@@ -1,0 +1,90 @@
+Add the following refinements to the existing Activity Log window.
+
+IMPORTANT:
+
+* Keep all previous Activity Log behavior.
+* Keep it persistent until the user manually closes it.
+* Keep the smooth entrance/exit animations.
+* Keep it draggable.
+* Do NOT change any other functionality.
+
+### 1. DYNAMIC WINDOW SIZE
+
+The Activity Log window currently cuts off longer messages.
+
+Fix the window so its size automatically adapts to the content.
+
+The window should intelligently resize based on the length of the message/content being displayed.
+
+For short messages:
+
+* Keep the window compact.
+* Do not create unnecessary empty space.
+
+For longer messages:
+
+* Expand the window enough to comfortably display the entire message.
+* Never cut off text.
+* Never hide the end of a response.
+* Never clip text behind the window boundaries.
+
+Use proper text wrapping so long sentences and responses remain readable.
+
+The window should have sensible minimum and maximum dimensions so extremely long responses do not create an absurdly large window.
+
+If the content becomes too long for the maximum size, use a clean internal scroll area rather than clipping the text.
+
+The Activity Log should feel like a properly designed responsive window rather than a fixed-size box.
+
+### 2. SLIGHTLY LARGER TEXT
+
+I like the current small technical typography, so **do not make the text large**.
+
+However, increase the Activity Log text size just slightly.
+
+Make it approximately **10–15% larger** than it currently is.
+
+The goal is:
+
+Current → slightly too tiny
+New → still compact and futuristic, but comfortably readable
+
+Increase the readability of:
+
+* User message
+* AI response
+* System actions
+* Status information
+* Timestamps
+* Labels
+
+Keep the hierarchy between primary and secondary text.
+
+Do NOT make every piece of text the same size.
+
+### 3. READABILITY
+
+Improve readability without sacrificing the compact aesthetic.
+
+Use:
+
+* Slightly more line height
+* Slightly better spacing between sections
+* Clear distinction between USER / AI / SYSTEM
+* Comfortable text padding inside the window
+
+Keep the typography small and technical, just **a little easier on the eyes**.
+
+### FINAL ACTIVITY WINDOW BEHAVIOR
+
+The Activity Log should now behave like a proper small interactive application window:
+
+**Opens smoothly → sizes itself to the content → displays the entire message → remains open → can be dragged → user can read everything → user clicks X → smoothly closes.**
+
+No clipped text.
+
+No sudden spawning.
+
+No automatic disappearance.
+
+No unnecessarily huge empty windows.
