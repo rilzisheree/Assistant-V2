@@ -1,0 +1,212 @@
+Redesign ONLY the central AI core area of the existing interface.
+
+The previous redesign direction is correct: REMOVE the large concentric HUD rings completely.
+
+However, the result should NOT be overly minimal or look like a simple glowing sphere floating in empty space.
+
+I want the central area to have significantly more depth, detail, layers, and visual activity while remaining modern and elegant.
+
+Use the attached reference image as inspiration for the amount of visual information and complexity, but do NOT copy its sci-fi/space aesthetic.
+
+CORE CONCEPT:
+
+Create a sophisticated digital "AI consciousness core" for LUA.
+
+The core should feel like a living computational system — something constantly processing information.
+
+CENTRAL CORE:
+
+Create a large translucent volumetric orb / digital sphere in the center.
+
+Inside the orb, create multiple layers of detail:
+
+* Fine flowing light filaments
+* Thousands of tiny particles
+* Subtle glowing points/nodes
+* Organic branching energy patterns
+* Small streams of light moving through the core
+* Slight internal turbulence
+* Layered translucent structures
+* Very subtle depth and refraction
+* A soft internal glow
+* Small clusters of particles that occasionally gather and disperse
+
+The internal activity should look computational and intelligent rather than like fire or electricity.
+
+The core should feel ALIVE.
+
+Do not make the sphere perfectly empty or perfectly smooth.
+
+SURFACE DETAIL:
+
+Around the surface of the orb, add extremely subtle digital details:
+
+* Tiny particles
+* Small fragmented geometric shapes
+* Micro indicators
+* Very thin data traces
+* Small illuminated nodes
+* Occasional short line segments
+
+These should feel integrated into the core rather than forming another circular HUD.
+
+NO COMPLETE RINGS.
+
+IMPORTANT:
+Do not replace the old rings with new rings.
+
+Instead, use fragmented elements, floating particles, irregular arcs, short segments, and organic structures.
+
+SURROUNDING INFORMATION:
+
+Add approximately 4–6 small floating information elements around the core.
+
+Examples:
+
+PROCESSING
+42%
+
+VOICE
+ACTIVE
+
+MEMORY
+READY
+
+CONTEXT
+SYNCED
+
+LATENCY
+12ms
+
+LUA
+ONLINE
+
+Do NOT make these large dashboard cards.
+
+They should be small, lightweight, semi-transparent UI elements with:
+
+* Thin borders
+* Slight glass effect
+* Tiny typography
+* Small status indicators
+* Subtle shadows
+* Very restrained glow
+
+Some elements can be connected to the core with extremely thin lines.
+
+The connections should be sparse and elegant.
+
+DIGITAL ENVIRONMENT:
+
+Add a subtle field of tiny particles around the entire core.
+
+Some particles should appear closer to the viewer while others fade into the background, creating depth.
+
+Add occasional faint geometric fragments and tiny data marks around the core.
+
+These should become less visible as they move away from the center.
+
+The goal is to make the central area feel like it contains an entire invisible computational system.
+
+VISUAL HIERARCHY:
+
+The eye should naturally move:
+
+1. Central AI core
+2. Internal energy / particles
+3. Floating contextual information
+4. Tiny ambient details
+
+Nothing should compete with the core.
+
+MODERN AESTHETIC:
+
+Keep the overall design modern, premium, calm, and sophisticated.
+
+Use the existing dark navy background.
+
+Use restrained:
+
+* Deep blue
+* Indigo
+* Cyan
+* Very subtle violet
+* Small amounts of mint/green for active states
+
+Avoid excessive neon.
+
+Avoid cyberpunk.
+
+Avoid spaceship interfaces.
+
+Avoid military HUDs.
+
+Avoid radar interfaces.
+
+Avoid giant glowing circles.
+
+Avoid excessive text.
+
+Avoid turning the entire area into a dashboard.
+
+The complexity should come from the CORE itself, particles, depth, energy, and subtle floating information — not from dozens of UI boxes.
+
+LUA:
+
+Keep "LUA" subtly integrated into the center of the intelligence core.
+
+Do not place giant text over the orb.
+
+The text could appear as a subtle illuminated identifier inside the core, almost as though the AI's identity is embedded within it.
+
+ANIMATION CONCEPT:
+
+The core should feel continuously alive.
+
+When IDLE:
+Slow particle movement and gentle internal breathing.
+
+When LISTENING:
+Particles and filaments subtly move toward the center and react to audio.
+
+When THINKING:
+Internal structures become more active, with information streams flowing through the core.
+
+When SPEAKING:
+The core emits subtle outward pulses and reacts rhythmically.
+
+When PROCESSING:
+Small nodes and data streams move rapidly through different regions of the core.
+
+The animation should remain smooth and restrained.
+
+IMPORTANT LAYOUT RULE:
+
+Keep the entire redesigned core within the existing central workspace.
+
+Do not modify:
+
+* Header
+* Left system monitor
+* Right activity log
+* File upload panel
+* Bottom command bar
+* Bottom-left status area
+
+Only redesign the central AI core.
+
+FINAL GOAL:
+
+The central area should feel like a visible representation of an AI's consciousness.
+
+It should have enough detail that there is always something interesting to look at, but still feel clean enough to be a premium modern application.
+
+Think:
+
+"Digital consciousness + glass + computational particles + living intelligence"
+
+NOT:
+
+"Spaceship reactor + radar + cyberpunk HUD."
+
+The result should feel visually rich, deep, and sophisticated without using the old concentric-ring design.

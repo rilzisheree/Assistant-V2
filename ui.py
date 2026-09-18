@@ -687,6 +687,8 @@ class HudCanvas(QWidget):
         t = self._core_phase
         amp = self._amp_disp
         state = self.state.upper()
+        motion = 0.34 + (0.28 if state in ("THINKING", "PROCESSING") else 0.0)
+        motion += amp * 0.36 + (0.18 if self.speaking else 0.0)
         orb_r = min(r * 0.72, max(78.0, min(W, H) * 0.34))
         orb = QRectF(cx - orb_r, cy - orb_r, orb_r * 2, orb_r * 2)
 
@@ -738,7 +740,7 @@ class HudCanvas(QWidget):
             path = QPainterPath()
             for i in range(31):
                 x = cx - orb_r * 1.18 + i * (orb_r * 2.36 / 30.0)
-                phase = t * (0.34 + k * 0.07) + i * 0.29 + k * 1.4
+                phase = t * motion * (1.0 + k * 0.14) + i * 0.29 + k * 1.4
                 y = cy + offset * orb_r + math.sin(phase) * orb_r * 0.11
                 y += math.sin(phase * 0.47 + 1.8) * orb_r * 0.055
                 if i == 0:
@@ -768,23 +770,61 @@ class HudCanvas(QWidget):
             p.setPen(QPen(filament, 1.0))
             p.drawPath(path)
 
+        # Organic branching structures suggest computation rather than
+        # electricity: each trunk splits into two soft, irregular branches.
+        for root in range(5):
+            root_phase = root * 1.31 + t * motion * 0.42
+            start_x = cx + math.cos(root_phase) * orb_r * 0.08
+            start_y = cy + math.sin(root_phase) * orb_r * 0.10
+            for branch in range(2):
+                path = QPainterPath()
+                path.moveTo(start_x, start_y)
+                px, py = start_x, start_y
+                for depth in range(5):
+                    phase = root_phase + branch * 2.2 + depth * 0.72
+                    px += math.cos(phase) * orb_r * (0.12 + depth * 0.018)
+                    py += math.sin(phase * 1.13) * orb_r * (0.10 + depth * 0.014)
+                    path.lineTo(px, py)
+                branch_col = mix(acc if root % 2 else main, 0.46)
+                branch_col.setAlpha(42 + int(amp * 28))
+                p.setPen(QPen(branch_col, 1.0 + (root % 2) * 0.35))
+                p.drawPath(path)
+
         # Deterministic particles: tiny points drift along the internal flow
         # and never jump because their seed is derived from their index.
-        for i in range(64):
+        # A few hundred points create density without turning the orb into
+        # noisy static at the app's normal size.
+        for i in range(288):
             seed = i * 1.61803398875
-            radial = 0.16 + (i % 11) / 14.0
-            angle = seed + t * (0.08 + (i % 5) * 0.012)
-            wobble = math.sin(t * 0.42 + seed * 1.7) * 0.07
+            radial = 0.10 + (i % 17) / 22.0
+            angle = seed + t * (0.06 + (i % 7) * 0.009) * motion
+            wobble = math.sin(t * 0.42 + seed * 1.7) * (0.035 + amp * 0.025)
             px = cx + math.cos(angle) * orb_r * (radial + wobble)
             py = cy + math.sin(angle * 1.21) * orb_r * (radial * 0.72 + wobble)
             if ((px - cx) / orb_r) ** 2 + ((py - cy) / orb_r) ** 2 <= 0.88:
-                col = main if i % 3 else acc
-                dot = mix(col, 0.72)
-                dot.setAlpha(80 + int(65 * (0.5 + 0.5 * math.sin(seed + t))))
-                size = 1.0 + (i % 3) * 0.45
+                col = acc if i % 7 == 0 else (main if i % 3 else QColor("#9d83ff"))
+                dot = mix(col, 0.68)
+                dot.setAlpha(48 + int(92 * (0.5 + 0.5 * math.sin(seed + t * motion))))
+                size = 0.55 + (i % 4) * 0.30
                 p.setBrush(QBrush(dot))
                 p.setPen(Qt.PenStyle.NoPen)
                 p.drawEllipse(QRectF(px - size, py - size, size * 2, size * 2))
+
+        # Small node clusters breathe in and out around the core. The cluster
+        # positions are stable, while their spread and brightness vary slowly.
+        for cluster in range(8):
+            seed = cluster * 2.17
+            spread = 0.10 + 0.035 * math.sin(t * 0.55 + seed)
+            node_x = cx + math.cos(seed + t * 0.05) * orb_r * (0.24 + cluster % 3 * 0.16)
+            node_y = cy + math.sin(seed * 1.37 + t * 0.04) * orb_r * 0.46
+            for member in range(5):
+                a = seed + member * 1.256 + t * 0.08
+                px = node_x + math.cos(a) * orb_r * spread
+                py = node_y + math.sin(a) * orb_r * spread
+                node = mix(acc if cluster % 2 else main, 0.82)
+                node.setAlpha(95 + int(35 * (0.5 + 0.5 * math.sin(seed + t))))
+                p.setBrush(QBrush(node))
+                p.drawEllipse(QRectF(px - 1.2, py - 1.2, 2.4, 2.4))
 
         # Soft glass glint across the upper-left surface.
         glint = QPainterPath()
@@ -809,18 +849,58 @@ class HudCanvas(QWidget):
         p.setPen(QPen(identity, 1))
         p.drawText(orb, Qt.AlignmentFlag.AlignCenter, name)
 
+        # Ambient depth field around the volume. These points fade quickly
+        # toward the edge and are deliberately irregular rather than radial.
+        p.setPen(Qt.PenStyle.NoPen)
+        for i in range(150):
+            seed = 9.7 + i * 2.371
+            distance = orb_r * (1.12 + (i % 19) / 16.0)
+            angle = seed + t * (0.018 + (i % 4) * 0.004)
+            px = cx + math.cos(angle) * distance
+            py = cy + math.sin(angle * 1.17) * distance * 0.68
+            if 5 < px < W - 5 and 6 < py < H - 6:
+                fade = max(0.0, 1.0 - distance / (orb_r * 2.45))
+                ambient = mix(main if i % 4 else acc, 0.38)
+                ambient.setAlpha(int(80 * fade) + (i % 3) * 5)
+                size = 0.45 + (i % 3) * 0.28
+                p.setBrush(QBrush(ambient))
+                p.drawEllipse(QRectF(px - size, py - size, size * 2, size * 2))
+
+        # Surface fragments and micro data traces. They never connect into a
+        # circle; each is a short, isolated mark embedded in the orb's field.
+        for i in range(34):
+            seed = i * 2.49 + 0.4
+            distance = orb_r * (0.98 + (i % 5) * 0.045)
+            angle = seed + t * (0.025 if i % 2 else -0.018)
+            px = cx + math.cos(angle) * distance
+            py = cy + math.sin(angle) * distance * 0.72
+            tangent = angle + math.pi * 0.5
+            length = 3.0 + (i % 4) * 2.0
+            fragment = mix(acc if i % 5 == 0 else main, 0.46)
+            fragment.setAlpha(70 + (i % 4) * 10)
+            p.setPen(QPen(fragment, 0.8 + (i % 3) * 0.25))
+            p.drawLine(QLineF(px, py,
+                              px + math.cos(tangent) * length,
+                              py + math.sin(tangent) * length))
+            if i % 6 == 0:
+                p.setBrush(QBrush(fragment))
+                p.drawEllipse(QRectF(px - 1.4, py - 1.4, 2.8, 2.8))
+
         # Sparse contextual callouts sit outside the volume and stay within the
         # central workspace. Their lines point inward without becoming a HUD.
         labels = [
             ("PROCESSING" if state in ("THINKING", "PROCESSING")
-             else "READY", "MODEL / LIVE", -1, -0.42),
+             else "READY", "42%" if state in ("THINKING", "PROCESSING")
+             else "MODEL / LIVE", -1, -0.62),
             ("VOICE ACTIVE" if self.speaking else "VOICE STANDBY",
-             "AUDIO CHANNEL", 1, -0.28),
-            ("MEMORY", "LOCAL CONTEXT", -1, 0.34),
-            ("CURRENT TASK", state.replace("_", " "), 1, 0.38),
+             "AUDIO CHANNEL", 1, -0.62),
+            ("MEMORY", "READY", -1, -0.02),
+            ("CONTEXT", "SYNCED", 1, -0.02),
+            ("LATENCY", "LIVE", -1, 0.57),
+            ("LUA", "ONLINE", 1, 0.57),
         ]
-        card_w = max(102.0, min(142.0, orb_r * 0.82))
-        card_h = 34.0
+        card_w = max(94.0, min(126.0, orb_r * 0.74))
+        card_h = 30.0
         for title, detail, side, y_ratio in labels:
             card_x = cx + side * (orb_r + card_w * 0.62)
             card_y = cy + y_ratio * orb_r - card_h * 0.5
@@ -841,24 +921,31 @@ class HudCanvas(QWidget):
                               anchor_x, anchor_y))
 
             card = QColor("#0b2037")
-            card.setAlpha(188)
+            card.setAlpha(164)
             p.setBrush(QBrush(card))
             border = mix(main, 0.32)
             border.setAlpha(120)
             p.setPen(QPen(border, 1.0))
             p.drawRoundedRect(QRectF(card_x, card_y, card_w, card_h), 7, 7)
 
-            p.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+            p.setBrush(QBrush(QColor(0, 0, 0, 0)))
+            p.setFont(QFont("Courier New", 6, QFont.Weight.Bold))
             text_col = QColor(C.WHITE)
             text_col.setAlpha(190)
             p.setPen(QPen(text_col, 1))
-            p.drawText(QRectF(card_x + 8, card_y + 5, card_w - 16, 11),
+            p.drawText(QRectF(card_x + 15, card_y + 4, card_w - 19, 10),
                        Qt.AlignmentFlag.AlignLeft, title)
+            dot_col = QColor(C.GREEN if title in ("VOICE ACTIVE", "LUA")
+                             else C.PRI)
+            dot_col.setAlpha(180)
+            p.setBrush(QBrush(dot_col))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(card_x + 7, card_y + 7, 4, 4))
             detail_col = mix(acc if title == "VOICE ACTIVE" else main, 0.72)
             detail_col.setAlpha(190)
             p.setPen(QPen(detail_col, 1))
-            p.setFont(QFont("Courier New", 6))
-            p.drawText(QRectF(card_x + 8, card_y + 18, card_w - 16, 10),
+            p.setFont(QFont("Courier New", 5))
+            p.drawText(QRectF(card_x + 15, card_y + 16, card_w - 19, 9),
                        Qt.AlignmentFlag.AlignLeft, detail)
 
     def _paint_core(self, p: QPainter, cx: float, cy: float, r: float,
