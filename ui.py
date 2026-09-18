@@ -20,7 +20,8 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
-    QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPointF,
+    QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPoint,
+    QPointF,
     QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
@@ -30,7 +31,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
+    QGraphicsOpacityEffect, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
 )
 
@@ -3554,6 +3555,62 @@ class RemoteKeyOverlay(QWidget):
         self.closed.emit()
 
 
+class _ActivityOverlay(QFrame):
+    """Compact activity panel with a dedicated, draggable header surface."""
+
+    position_changed = pyqtSignal(QPoint)
+
+
+class _ActivityHeader(QWidget):
+    """Header-only drag handle so the activity content remains interactive."""
+
+    def __init__(self, overlay: _ActivityOverlay):
+        super().__init__(overlay)
+        self._overlay = overlay
+        self._drag_origin: QPoint | None = None
+        self._start_pos: QPoint | None = None
+        self.setFixedHeight(20)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setToolTip("Drag to move activity panel")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = event.globalPosition().toPoint()
+            self._start_pos = self._overlay.pos()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_origin is not None and self._start_pos is not None:
+            delta = event.globalPosition().toPoint() - self._drag_origin
+            parent = self._overlay.parentWidget()
+            if parent is not None:
+                x = self._start_pos.x() + delta.x()
+                y = self._start_pos.y() + delta.y()
+                max_x = max(10, parent.width() - self._overlay.width() - 10)
+                max_y = max(66, parent.height() - self._overlay.height() - 12)
+                self._overlay.move(
+                    max(10, min(max_x, x)),
+                    max(66, min(max_y, y)),
+                )
+                self._overlay.position_changed.emit(self._overlay.pos())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = None
+            self._start_pos = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class MainWindow(QMainWindow):
     _log_sig        = pyqtSignal(str)
     _state_sig      = pyqtSignal(str)
@@ -4278,23 +4335,37 @@ class MainWindow(QMainWindow):
         """
 
         self._activity_lines: list[str] = []
-        self._activity_overlay = QFrame(cw)
+        self._activity_user_position: QPoint | None = None
+        self._activity_target_rect: QRect | None = None
+        self._activity_hiding = False
+        self._activity_overlay = _ActivityOverlay(cw)
         self._activity_overlay.setObjectName("ContextPanel")
         self._activity_overlay.setStyleSheet(panel_style)
         self._activity_overlay.setFixedSize(348, 142)
+        self._activity_opacity = QGraphicsOpacityEffect(self._activity_overlay)
+        self._activity_opacity.setOpacity(1.0)
+        self._activity_overlay.setGraphicsEffect(self._activity_opacity)
+        self._activity_overlay.position_changed.connect(
+            self._remember_activity_position
+        )
         activity_lay = QVBoxLayout(self._activity_overlay)
         activity_lay.setContentsMargins(10, 8, 10, 9)
         activity_lay.setSpacing(4)
-        activity_hdr = QHBoxLayout()
+        activity_hdr = _ActivityHeader(self._activity_overlay)
+        activity_hdr_lay = QHBoxLayout(activity_hdr)
+        activity_hdr_lay.setContentsMargins(0, 0, 0, 0)
+        activity_hdr_lay.setSpacing(4)
         activity_title = QLabel("◈  ACTIVITY / LIVE")
+        activity_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         activity_title.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         activity_title.setStyleSheet(f"color: {C.PRI};")
-        activity_hdr.addWidget(activity_title)
-        activity_hdr.addStretch()
+        activity_hdr_lay.addWidget(activity_title)
+        activity_hdr_lay.addStretch()
         activity_state = QLabel("TRANSIENT")
+        activity_state.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         activity_state.setFont(QFont("Courier New", 5))
         activity_state.setStyleSheet(f"color: {C.TEXT_DIM};")
-        activity_hdr.addWidget(activity_state)
+        activity_hdr_lay.addWidget(activity_state)
         close_activity = QPushButton("×")
         close_activity.setFixedSize(18, 18)
         close_activity.setFont(QFont("Courier New", 10))
@@ -4305,8 +4376,8 @@ class MainWindow(QMainWindow):
             f"QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}"
         )
         close_activity.clicked.connect(self._hide_activity)
-        activity_hdr.addWidget(close_activity)
-        activity_lay.addLayout(activity_hdr)
+        activity_hdr_lay.addWidget(close_activity)
+        activity_lay.addWidget(activity_hdr)
         self._activity_display = QTextEdit()
         self._activity_display.setReadOnly(True)
         self._activity_display.setFont(QFont("Courier New", 6))
@@ -4351,6 +4422,22 @@ class MainWindow(QMainWindow):
         self._activity_timer.setSingleShot(True)
         self._activity_timer.timeout.connect(self._hide_activity)
 
+    def _remember_activity_position(self, position: QPoint):
+        self._activity_user_position = self._clamp_activity_position(position)
+        if getattr(self, "_activity_animation", None) is None:
+            self._activity_target_rect = QRect(self._activity_overlay.geometry())
+
+    def _clamp_activity_position(self, position: QPoint) -> QPoint:
+        cw = self.centralWidget()
+        if cw is None or not hasattr(self, "_activity_overlay"):
+            return position
+        max_x = max(10, cw.width() - self._activity_overlay.width() - 10)
+        max_y = max(66, cw.height() - self._activity_overlay.height() - 12)
+        return QPoint(
+            max(10, min(max_x, position.x())),
+            max(66, min(max_y, position.y())),
+        )
+
     def _position_context_overlays(self):
         if not hasattr(self, "_activity_overlay"):
             return
@@ -4358,20 +4445,135 @@ class MainWindow(QMainWindow):
         w, h = cw.width(), cw.height()
         activity_w = self._activity_overlay.width()
         diag_w = self._diagnostic_overlay.width()
-        self._activity_overlay.move(
-            max(10, min(w - activity_w - 10, w // 2 + 150)),
-            max(66, min(h - self._activity_overlay.height() - 12, 76)),
-        )
+        if self._activity_user_position is None:
+            self._activity_overlay.move(
+                max(10, min(w - activity_w - 10, w // 2 + 150)),
+                max(66, min(h - self._activity_overlay.height() - 12, 76)),
+            )
+        else:
+            self._activity_user_position = self._clamp_activity_position(
+                self._activity_user_position
+            )
+            self._activity_overlay.move(self._activity_user_position)
         self._diagnostic_overlay.move(
             max(10, min(w - diag_w - 10, 22)),
             max(66, min(h - self._diagnostic_overlay.height() - 12, 78)),
         )
+        if (not self._activity_overlay.isVisible()
+                and getattr(self, "_activity_animation", None) is None):
+            self._activity_target_rect = QRect(self._activity_overlay.geometry())
+
+    def _stop_activity_animation(self):
+        animation = getattr(self, "_activity_animation", None)
+        if animation is not None:
+            animation.stop()
+            self._activity_animation = None
+
+    def _animate_activity_in(self):
+        self._stop_activity_animation()
+        overlay = self._activity_overlay
+        if self._activity_target_rect is not None:
+            overlay.setFixedSize(self._activity_target_rect.size())
+            overlay.setGeometry(self._activity_target_rect)
+        else:
+            self._position_context_overlays()
+        final_rect = QRect(overlay.geometry())
+        start_w = max(1, int(final_rect.width() * 0.965))
+        start_h = max(1, int(final_rect.height() * 0.965))
+        start_rect = QRect(
+            final_rect.x() + 8,
+            final_rect.y() + 6,
+            start_w,
+            start_h,
+        )
+        self._activity_target_rect = QRect(final_rect)
+        overlay.setMinimumSize(0, 0)
+        overlay.setMaximumSize(16777215, 16777215)
+        overlay.setGeometry(start_rect)
+        self._activity_opacity.setOpacity(0.0)
+        overlay.show()
+        overlay.raise_()
+
+        animation = QParallelAnimationGroup(self)
+        geometry = QPropertyAnimation(overlay, b"geometry", animation)
+        geometry.setDuration(230)
+        geometry.setStartValue(start_rect)
+        geometry.setEndValue(final_rect)
+        geometry.setEasingCurve(QEasingCurve.Type.OutCubic)
+        opacity = QPropertyAnimation(self._activity_opacity, b"opacity", animation)
+        opacity.setDuration(190)
+        opacity.setStartValue(0.0)
+        opacity.setEndValue(1.0)
+        opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.addAnimation(geometry)
+        animation.addAnimation(opacity)
+        self._activity_animation = animation
+
+        def _finished():
+            if self._activity_animation is not animation:
+                return
+            overlay.setGeometry(final_rect)
+            overlay.setFixedSize(final_rect.size())
+            self._activity_opacity.setOpacity(1.0)
+            self._activity_animation = None
+
+        animation.finished.connect(_finished)
+        animation.start()
+
+    def _animate_activity_out(self):
+        self._stop_activity_animation()
+        overlay = self._activity_overlay
+        final_rect = QRect(overlay.geometry())
+        end_w = max(1, int(final_rect.width() * 0.965))
+        end_h = max(1, int(final_rect.height() * 0.965))
+        end_rect = QRect(
+            final_rect.x() + 8,
+            final_rect.y() + 6,
+            end_w,
+            end_h,
+        )
+        overlay.setMinimumSize(0, 0)
+        overlay.setMaximumSize(16777215, 16777215)
+
+        animation = QParallelAnimationGroup(self)
+        geometry = QPropertyAnimation(overlay, b"geometry", animation)
+        geometry.setDuration(150)
+        geometry.setStartValue(final_rect)
+        geometry.setEndValue(end_rect)
+        geometry.setEasingCurve(QEasingCurve.Type.InCubic)
+        opacity = QPropertyAnimation(self._activity_opacity, b"opacity", animation)
+        opacity.setDuration(125)
+        opacity.setStartValue(self._activity_opacity.opacity())
+        opacity.setEndValue(0.0)
+        opacity.setEasingCurve(QEasingCurve.Type.InCubic)
+        animation.addAnimation(geometry)
+        animation.addAnimation(opacity)
+        self._activity_animation = animation
+
+        def _finished():
+            if self._activity_animation is not animation:
+                return
+            overlay.hide()
+            overlay.setGeometry(final_rect)
+            overlay.setFixedSize(final_rect.size())
+            self._activity_opacity.setOpacity(1.0)
+            self._activity_animation = None
+            self._activity_hiding = False
+
+        animation.finished.connect(_finished)
+        animation.start()
 
     def _hide_activity(self):
-        if hasattr(self, "_activity_overlay"):
-            self._activity_overlay.hide()
         if hasattr(self, "_activity_timer"):
             self._activity_timer.stop()
+        if not hasattr(self, "_activity_overlay"):
+            return
+        if not self._activity_overlay.isVisible():
+            self._activity_hiding = False
+            self._stop_activity_animation()
+            return
+        self._activity_hiding = True
+        self._animate_activity_out()
 
     def _on_activity_event(self, text: str):
         """Mirror existing log events into a short-lived JARVIS window."""
@@ -4393,8 +4595,12 @@ class MainWindow(QMainWindow):
             self._activity_display.textCursor().MoveOperation.End
         )
         self._position_context_overlays()
-        self._activity_overlay.show()
-        self._activity_overlay.raise_()
+        if not self._activity_overlay.isVisible() or self._activity_hiding:
+            self._activity_hiding = False
+            self._animate_activity_in()
+        else:
+            self._activity_overlay.show()
+            self._activity_overlay.raise_()
         self._activity_timer.start(8500)
 
     def _toggle_diagnostics(self, show: bool | None = None):
@@ -4538,8 +4744,10 @@ class MainWindow(QMainWindow):
         self._title_lbl.setParent(w)
         self._title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont("Bahnschrift", 16, QFont.Weight.Medium)
-        title_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.25)
+        title_font = QFont("Avenir Next", 15, QFont.Weight.Medium)
+        title_font.setStyleHint(QFont.StyleHint.SansSerif)
+        title_font.setStretch(105)
+        title_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
         self._title_lbl.setFont(title_font)
         self._title_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         self._sub_lbl = QLabel("")
@@ -4725,7 +4933,7 @@ class MainWindow(QMainWindow):
         dock = QWidget()
         dock.setObjectName("CommandDock")
         dock.setFixedHeight(54)
-        dock.setMaximumWidth(720)
+        dock.setMaximumWidth(748)
         dock.setStyleSheet(f"""
             QWidget#CommandDock {{
                 background: rgba(9, 29, 47, 238);
@@ -4737,13 +4945,13 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(8)
 
-        self._interrupt_btn.setFixedWidth(108)
+        self._interrupt_btn.setFixedWidth(120)
         self._interrupt_btn.setFixedHeight(32)
         lay.addWidget(self._interrupt_btn)
 
         lay.addLayout(self._command_row, stretch=1)
 
-        self._mute_btn.setFixedWidth(130)
+        self._mute_btn.setFixedWidth(138)
         self._mute_btn.setFixedHeight(32)
         lay.addWidget(self._mute_btn)
         return dock
