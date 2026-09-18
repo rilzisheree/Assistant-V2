@@ -770,6 +770,89 @@ class HudCanvas(QWidget):
             p.setPen(QPen(filament, 1.0))
             p.drawPath(path)
 
+        # Holographic substrate: faint scanlines and offset translucent
+        # contours make the volume feel layered without outlining another
+        # circle around it.
+        scan = QColor(C.PRI)
+        scan.setAlpha(10)
+        p.setPen(QPen(scan, 0.55))
+        for row in range(-8, 9):
+            y = cy + row * orb_r * 0.105
+            p.drawLine(QLineF(cx - orb_r * 0.96, y,
+                              cx + orb_r * 0.96, y + math.sin(row) * 0.9))
+
+        for layer in range(3):
+            layer_path = QPainterPath()
+            phase = t * (0.08 + layer * 0.025) + layer * 1.8
+            for i in range(13):
+                a = -math.pi * 0.92 + i * math.pi * 1.84 / 12.0
+                rr = orb_r * (0.42 + layer * 0.09)
+                px = cx + math.cos(a + phase * 0.04) * rr
+                py = cy + math.sin(a) * rr * (0.48 + layer * 0.08)
+                px += math.sin(phase + i * 0.7) * orb_r * 0.025
+                py += math.cos(phase * 0.8 + i) * orb_r * 0.018
+                if i == 0:
+                    layer_path.moveTo(px, py)
+                else:
+                    layer_path.lineTo(px, py)
+            layer_col = mix(acc if layer == 1 else main, 0.34)
+            layer_col.setAlpha(22 + layer * 7)
+            p.setPen(QPen(layer_col, 0.75))
+            p.drawPath(layer_path)
+
+        # Short segmented arcs are used as internal processor layers. Each
+        # segment is isolated and offset, so this cannot read as a HUD ring.
+        for i in range(16):
+            seed = i * 2.43 + 0.7
+            rr_x = orb_r * (0.36 + (i % 4) * 0.075)
+            rr_y = rr_x * (0.48 + (i % 3) * 0.08)
+            box = QRectF(cx - rr_x, cy - rr_y, rr_x * 2, rr_y * 2)
+            start = int((seed * 83 + t * (2.5 if i % 2 else -1.4)) * 16)
+            span = int((7 + (i % 5) * 4) * 16)
+            arc_col = mix(acc if i % 5 == 0 else main, 0.42)
+            arc_col.setAlpha(42 + (i % 4) * 8)
+            p.setPen(QPen(arc_col, 0.8 + (i % 3) * 0.25))
+            p.drawArc(box, start, span)
+
+        # Faint signal waveforms cross only small portions of the volume.
+        for wave in range(2):
+            signal = QPainterPath()
+            y0 = cy + (wave - 0.5) * orb_r * 0.38
+            for i in range(25):
+                px = cx - orb_r * 0.77 + i * (orb_r * 1.54 / 24.0)
+                phase = i * 0.72 + t * (0.34 + wave * 0.12)
+                py = y0 + math.sin(phase) * orb_r * (0.028 + amp * 0.018)
+                if i == 0:
+                    signal.moveTo(px, py)
+                else:
+                    signal.lineTo(px, py)
+            signal_col = mix(acc if wave else main, 0.40)
+            signal_col.setAlpha(38 + int(amp * 20))
+            p.setPen(QPen(signal_col, 0.7))
+            p.drawPath(signal)
+
+        # Microscopic circuitry: compact orthogonal traces branch from
+        # asymmetrical points instead of forming a symmetrical technical grid.
+        for i in range(18):
+            seed = i * 1.93 + 0.3
+            px = cx + math.cos(seed) * orb_r * (0.18 + (i % 4) * 0.13)
+            py = cy + math.sin(seed * 1.41) * orb_r * 0.48
+            horizontal = orb_r * (0.045 + (i % 3) * 0.022)
+            vertical = orb_r * (0.035 + (i % 4) * 0.014)
+            direction = -1 if i % 2 else 1
+            circuit = QPainterPath()
+            circuit.moveTo(px, py)
+            circuit.lineTo(px + horizontal * direction, py)
+            circuit.lineTo(px + horizontal * direction,
+                           py + vertical * (1 if i % 3 else -1))
+            circuit_col = mix(acc if i % 6 == 0 else main, 0.38)
+            circuit_col.setAlpha(54 + (i % 3) * 8)
+            p.setPen(QPen(circuit_col, 0.75))
+            p.drawPath(circuit)
+            p.setBrush(QBrush(circuit_col))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(px - 1.0, py - 1.0, 2.0, 2.0))
+
         # Organic branching structures suggest computation rather than
         # electricity: each trunk splits into two soft, irregular branches.
         for root in range(5):
@@ -794,7 +877,7 @@ class HudCanvas(QWidget):
         # and never jump because their seed is derived from their index.
         # A few hundred points create density without turning the orb into
         # noisy static at the app's normal size.
-        for i in range(288):
+        for i in range(360):
             seed = i * 1.61803398875
             radial = 0.10 + (i % 17) / 22.0
             angle = seed + t * (0.06 + (i % 7) * 0.009) * motion
@@ -885,6 +968,35 @@ class HudCanvas(QWidget):
             if i % 6 == 0:
                 p.setBrush(QBrush(fragment))
                 p.drawEllipse(QRectF(px - 1.4, py - 1.4, 2.8, 2.8))
+
+        # A few external diagnostic traces sit close to the orb. They are
+        # deliberately short and uneven, providing technical context without
+        # turning the surrounding space into a dashboard.
+        p.setFont(QFont("Courier New", 5))
+        for i in range(12):
+            seed = 1.1 + i * 2.71
+            edge_r = orb_r * (1.02 + (i % 3) * 0.045)
+            angle = seed + t * (0.012 if i % 2 else -0.009)
+            ex = cx + math.cos(angle) * edge_r
+            ey = cy + math.sin(angle) * edge_r * 0.72
+            length = orb_r * (0.055 + (i % 3) * 0.018)
+            outward = 1 if math.cos(angle) >= 0 else -1
+            tx = ex + outward * length
+            ty = ey + math.sin(seed * 1.7) * orb_r * 0.045
+            trace_col = mix(acc if i % 5 == 0 else main, 0.34)
+            trace_col.setAlpha(68 + (i % 3) * 8)
+            p.setPen(QPen(trace_col, 0.7))
+            p.drawLine(QLineF(ex, ey, tx, ty))
+            p.setBrush(QBrush(trace_col))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(ex - 1.15, ey - 1.15, 2.3, 2.3))
+            telemetry = f"{(i * 17 + 4):02d}.{(i * 7 + 3):02d}"
+            tele_col = mix(main, 0.30)
+            tele_col.setAlpha(92)
+            p.setPen(QPen(tele_col, 1))
+            text_x = tx + (3 if outward > 0 else -29)
+            p.drawText(QRectF(text_x, ty - 4, 26, 8),
+                       Qt.AlignmentFlag.AlignLeft, telemetry)
 
         # Sparse contextual callouts sit outside the volume and stay within the
         # central workspace. Their lines point inward without becoming a HUD.
