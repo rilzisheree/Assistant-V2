@@ -137,11 +137,11 @@ def get_hud_style() -> str:
     """Which centrepiece the HUD draws: the animated head, or the reactor core.
 
     Taste, not capability — both render in the same software painter and cost
-    about the same. Defaults to the head because that is what MARK LIV shipped
-    with; anyone who preferred the older look can switch back in ⚙ and the
-    choice survives a restart.
+    about the same. Defaults to the core so the primary AI surface is visible
+    on a fresh setup; anyone who prefers the face can switch it back in ⚙ and
+    the choice survives a restart.
     """
-    v = str(load_api_keys().get("hud_style", "face")).strip().lower()
+    v = str(load_api_keys().get("hud_style", "core")).strip().lower()
     return v if v in HUD_STYLES else "face"
 
 

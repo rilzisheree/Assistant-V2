@@ -393,6 +393,10 @@ class HudCanvas(QWidget):
         self.speaking = False
         self.state    = "INITIALISING"
         self._assistant_name = assistant_name
+        self._telemetry = {
+            "CPU": ("--", 0.0), "MEM": ("--", 0.0), "GPU": ("N/A", 0.0),
+            "NET": ("--", 0.0), "TMP": ("N/A", 0.0),
+        }
 
         # The holographic head that fills the HUD. If it could not be imported
         # we fall back to the old glowing core so the panel is never empty.
@@ -447,6 +451,29 @@ class HudCanvas(QWidget):
         self._tmr = QTimer(self)
         self._tmr.timeout.connect(self._step)
         self._tmr.start(16)
+
+    def set_telemetry(self, snapshot: dict) -> None:
+        """Update the small live readouts embedded in the orb."""
+        try:
+            cpu = float(snapshot.get("cpu", 0.0))
+            mem = float(snapshot.get("mem", 0.0))
+            net = float(snapshot.get("net", 0.0))
+            gpu = float(snapshot.get("gpu", -1.0))
+            tmp = float(snapshot.get("tmp", -1.0))
+            net_text = (f"{net * 1024:.0f}KB/s" if net < 1.0
+                        else f"{net:.1f}MB/s")
+            self._telemetry = {
+                "CPU": (f"{cpu:.0f}%", max(0.0, min(100.0, cpu))),
+                "MEM": (f"{mem:.0f}%", max(0.0, min(100.0, mem))),
+                "GPU": (f"{gpu:.0f}%" if gpu >= 0 else "N/A",
+                        max(0.0, min(100.0, gpu)) if gpu >= 0 else 0.0),
+                "NET": (net_text, max(0.0, min(100.0, net * 10))),
+                "TMP": (f"{tmp:.0f}°C" if tmp >= 0 else "N/A",
+                        max(0.0, min(100.0, tmp)) if tmp >= 0 else 0.0),
+            }
+            self.update()
+        except Exception:
+            pass
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -920,6 +947,48 @@ class HudCanvas(QWidget):
         p.setPen(QPen(shine, 2.2))
         p.drawPath(glint)
         p.restore()
+
+        # Live system telemetry is part of the core geometry, not a separate
+        # dashboard. Each readout gets a different anchor and a tiny meter so
+        # the group stays asymmetric and compact.
+        telemetry = list(self._telemetry.items())
+        telemetry_layout = (
+            (-2.48, -0.66, -1), (-2.02, 0.56, -1),
+            (-0.70, -0.76, 1), (0.22, 0.70, 1), (1.18, 0.54, 1),
+        )
+        p.setFont(QFont("Courier New", 5, QFont.Weight.Bold))
+        for (label, (value, pct)), (angle, y_bias, side) in zip(
+                telemetry, telemetry_layout):
+            tx = cx + math.cos(angle) * orb_r * 0.88
+            ty = cy + y_bias * orb_r * 0.60
+            edge_x = cx + math.cos(angle) * orb_r * 0.98
+            edge_y = cy + math.sin(angle) * orb_r * 0.74
+            tele_col = mix(acc if label in ("GPU", "TMP") else main, 0.44)
+            tele_col.setAlpha(135)
+            p.setPen(QPen(tele_col, 0.7))
+            p.drawLine(QLineF(edge_x, edge_y, tx, ty))
+            p.setBrush(QBrush(tele_col))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QRectF(edge_x - 1.1, edge_y - 1.1, 2.2, 2.2))
+
+            box_w = 48.0
+            box_x = tx if side > 0 else tx - box_w
+            text_col = mix(acc if label in ("GPU", "TMP") else main, 0.65)
+            text_col.setAlpha(180)
+            p.setPen(QPen(text_col, 1))
+            p.drawText(QRectF(box_x, ty - 7, box_w, 7),
+                       Qt.AlignmentFlag.AlignLeft if side > 0
+                       else Qt.AlignmentFlag.AlignRight, f"{label} {value}")
+            meter_w = 22.0
+            meter_x = box_x if side > 0 else box_x + box_w - meter_w
+            meter_y = ty + 2
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(mix(main, 0.20)))
+            p.drawRect(QRectF(meter_x, meter_y, meter_w, 1.5))
+            if pct > 0:
+                p.setBrush(QBrush(text_col))
+                p.drawRect(QRectF(meter_x, meter_y,
+                                  meter_w * min(1.0, pct / 100.0), 1.5))
 
         # Subtle identity mark inside the volume, never giant text over it.
         name = self._assistant_name or "LUA"
@@ -3425,7 +3494,11 @@ class MainWindow(QMainWindow):
         body.setSpacing(0)
 
         self._left_panel = self._build_left_panel()
-        body.addWidget(self._left_panel, stretch=0)
+        # The legacy monitor remains built and updated for compatibility, but
+        # no longer consumes permanent screen space. Its values are rendered
+        # in the orb and in the optional diagnostic overlay.
+        self._left_panel.setParent(central)
+        self._left_panel.hide()
 
         # Center column: HUD + resizable content panel via QSplitter
         self.hud = HudCanvas(face_path, _display)
@@ -3493,6 +3566,10 @@ class MainWindow(QMainWindow):
         self._center_split.setCollapsible(0, False)
 
         self._right_panel = self._build_right_panel()
+        # Keep the activity log and file controls alive as functional sources;
+        # their presentation is now contextual rather than a fixed side rail.
+        self._right_panel.setParent(central)
+        self._right_panel.hide()
         center_col = QWidget()
         center_col.setStyleSheet("background: transparent;")
         center_lay = QVBoxLayout(center_col)
@@ -3501,8 +3578,7 @@ class MainWindow(QMainWindow):
         center_lay.addWidget(self._center_split, stretch=1)
         center_lay.addWidget(self._build_command_dock(), stretch=0,
                              alignment=Qt.AlignmentFlag.AlignHCenter)
-        body.addWidget(center_col, stretch=5)
-        body.addWidget(self._right_panel, stretch=0)
+        body.addWidget(center_col, stretch=1)
 
         root.addLayout(body, stretch=1)
         root.addWidget(self._build_footer())
@@ -3547,6 +3623,8 @@ class MainWindow(QMainWindow):
         self._clipboard_panel = ClipboardPanel(self.centralWidget())
         self._clipboard_panel.action_requested.connect(self._on_clipboard_action)
         QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
+        self._build_context_overlays()
+        self._log._sig.connect(self._on_activity_event)
 
         self._overlay: SetupOverlay | None = None
         self._ready = self._check_config()
@@ -4024,9 +4102,163 @@ class MainWindow(QMainWindow):
         # Quick drawer — reposition if open
         if hasattr(self, '_quick_drawer') and self._quick_drawer.isVisible():
             self._position_quick_drawer()
+        self._position_context_overlays()
+    def _build_context_overlays(self):
+        """Build compact, on-demand views for information formerly in rails."""
+        cw = self.centralWidget()
+        panel_style = f"""
+            QFrame#ContextPanel {{
+                background: rgba(7, 24, 42, 236);
+                border: 1px solid {C.BORDER_A};
+                border-radius: 9px;
+            }}
+            QLabel {{ background: transparent; }}
+            QTextEdit {{
+                background: rgba(4, 16, 29, 175);
+                color: {C.TEXT};
+                border: 1px solid {C.BORDER};
+                border-radius: 4px;
+                padding: 5px;
+            }}
+        """
+
+        self._activity_lines: list[str] = []
+        self._activity_overlay = QFrame(cw)
+        self._activity_overlay.setObjectName("ContextPanel")
+        self._activity_overlay.setStyleSheet(panel_style)
+        self._activity_overlay.setFixedSize(348, 142)
+        activity_lay = QVBoxLayout(self._activity_overlay)
+        activity_lay.setContentsMargins(10, 8, 10, 9)
+        activity_lay.setSpacing(4)
+        activity_hdr = QHBoxLayout()
+        activity_title = QLabel("◈  ACTIVITY / LIVE")
+        activity_title.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        activity_title.setStyleSheet(f"color: {C.PRI};")
+        activity_hdr.addWidget(activity_title)
+        activity_hdr.addStretch()
+        activity_state = QLabel("TRANSIENT")
+        activity_state.setFont(QFont("Courier New", 5))
+        activity_state.setStyleSheet(f"color: {C.TEXT_DIM};")
+        activity_hdr.addWidget(activity_state)
+        close_activity = QPushButton("×")
+        close_activity.setFixedSize(18, 18)
+        close_activity.setFont(QFont("Courier New", 10))
+        close_activity.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_activity.setStyleSheet(
+            f"QPushButton {{ color: {C.TEXT_DIM}; background: transparent; "
+            f"border: 1px solid {C.BORDER}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}"
+        )
+        close_activity.clicked.connect(self._hide_activity)
+        activity_hdr.addWidget(close_activity)
+        activity_lay.addLayout(activity_hdr)
+        self._activity_display = QTextEdit()
+        self._activity_display.setReadOnly(True)
+        self._activity_display.setFont(QFont("Courier New", 6))
+        activity_lay.addWidget(self._activity_display, stretch=1)
+        self._activity_overlay.hide()
+
+        self._diagnostic_overlay = QFrame(cw)
+        self._diagnostic_overlay.setObjectName("ContextPanel")
+        self._diagnostic_overlay.setStyleSheet(panel_style)
+        self._diagnostic_overlay.setFixedSize(238, 158)
+        diag_lay = QVBoxLayout(self._diagnostic_overlay)
+        diag_lay.setContentsMargins(10, 8, 10, 9)
+        diag_lay.setSpacing(4)
+        diag_hdr = QHBoxLayout()
+        diag_title = QLabel("◈  SYSTEM DIAGNOSTICS")
+        diag_title.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        diag_title.setStyleSheet(f"color: {C.PRI};")
+        diag_hdr.addWidget(diag_title)
+        diag_hdr.addStretch()
+        diag_close = QPushButton("×")
+        diag_close.setFixedSize(18, 18)
+        diag_close.setFont(QFont("Courier New", 10))
+        diag_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        diag_close.setStyleSheet(
+            f"QPushButton {{ color: {C.TEXT_DIM}; background: transparent; "
+            f"border: 1px solid {C.BORDER}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}"
+        )
+        diag_close.clicked.connect(lambda: self._toggle_diagnostics(False))
+        diag_hdr.addWidget(diag_close)
+        diag_lay.addLayout(diag_hdr)
+        self._diagnostic_rows: dict[str, QLabel] = {}
+        for key in ("CPU", "MEM", "GPU", "NET", "TMP", "UPTIME"):
+            row = QLabel(f"{key:<6} --")
+            row.setFont(QFont("Courier New", 7))
+            row.setStyleSheet(f"color: {C.TEXT_MED};")
+            self._diagnostic_rows[key] = row
+            diag_lay.addWidget(row)
+        self._diagnostic_overlay.hide()
+
+        self._activity_timer = QTimer(self)
+        self._activity_timer.setSingleShot(True)
+        self._activity_timer.timeout.connect(self._hide_activity)
+
+    def _position_context_overlays(self):
+        if not hasattr(self, "_activity_overlay"):
+            return
+        cw = self.centralWidget()
+        w, h = cw.width(), cw.height()
+        activity_w = self._activity_overlay.width()
+        diag_w = self._diagnostic_overlay.width()
+        self._activity_overlay.move(
+            max(10, min(w - activity_w - 10, w // 2 + 150)),
+            max(66, min(h - self._activity_overlay.height() - 12, 76)),
+        )
+        self._diagnostic_overlay.move(
+            max(10, min(w - diag_w - 10, 22)),
+            max(66, min(h - self._diagnostic_overlay.height() - 12, 78)),
+        )
+
+    def _hide_activity(self):
+        if hasattr(self, "_activity_overlay"):
+            self._activity_overlay.hide()
+        if hasattr(self, "_activity_timer"):
+            self._activity_timer.stop()
+
+    def _on_activity_event(self, text: str):
+        """Mirror existing log events into a short-lived JARVIS window."""
+        if not text or not hasattr(self, "_activity_display"):
+            return
+        raw = str(text).strip().replace("\n", "  ")
+        if raw.startswith("You:"):
+            line = "YOU     " + raw[4:].strip()
+        elif raw.startswith("ERR:"):
+            line = "SYSTEM  ! " + raw[4:].strip()
+        elif raw.startswith("AI:"):
+            line = "AI      " + raw[3:].strip()
+        else:
+            line = "SYSTEM  " + raw
+        self._activity_lines.append(line[:150])
+        self._activity_lines = self._activity_lines[-5:]
+        self._activity_display.setPlainText("\n".join(self._activity_lines))
+        self._activity_display.moveCursor(
+            self._activity_display.textCursor().MoveOperation.End
+        )
+        self._position_context_overlays()
+        self._activity_overlay.show()
+        self._activity_overlay.raise_()
+        self._activity_timer.start(8500)
+
+    def _toggle_diagnostics(self, show: bool | None = None):
+        if not hasattr(self, "_diagnostic_overlay"):
+            return
+        show = (not self._diagnostic_overlay.isVisible()
+                if show is None else bool(show))
+        if hasattr(self, "_monitor_btn"):
+            self._monitor_btn.setChecked(show)
+        if show:
+            self._position_context_overlays()
+            self._diagnostic_overlay.show()
+            self._diagnostic_overlay.raise_()
+        else:
+            self._diagnostic_overlay.hide()
 
     def _update_metrics(self):
         snap = _metrics.snapshot()
+        self.hud.set_telemetry(snap)
 
         # CPU
         cpu = snap["cpu"]
@@ -4075,6 +4307,19 @@ class MainWindow(QMainWindow):
         except Exception:
             self._proc_lbl.setText("PROC  --")
 
+        if hasattr(self, "_diagnostic_rows"):
+            values = {
+                "CPU": f"{snap['cpu']:.0f}%",
+                "MEM": f"{snap['mem']:.0f}%",
+                "GPU": f"{snap['gpu']:.0f}%" if snap["gpu"] >= 0 else "N/A",
+                "NET": (f"{snap['net'] * 1024:.0f}KB/s"
+                        if snap["net"] < 1.0 else f"{snap['net']:.1f}MB/s"),
+                "TMP": f"{snap['tmp']:.0f}°C" if snap["tmp"] >= 0 else "N/A",
+                "UPTIME": self._uptime_lbl.text().replace("UP  ", ""),
+            }
+            for key, value in values.items():
+                self._diagnostic_rows[key].setText(f"{key:<6} {value}")
+
 
     def _build_header(self) -> QWidget:
         w = QWidget()
@@ -4113,6 +4358,24 @@ class MainWindow(QMainWindow):
         self._drawer_btn.setCheckable(True)
         self._drawer_btn.clicked.connect(self._toggle_drawer)
         lay.addWidget(self._drawer_btn)
+        self._monitor_btn = QPushButton("SYS")
+        self._monitor_btn.setCheckable(True)
+        self._monitor_btn.setFixedSize(42, 26)
+        self._monitor_btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        self._monitor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._monitor_btn.setToolTip("Open system diagnostics")
+        self._monitor_btn.setStyleSheet(f"""
+            QPushButton {{
+                color: {C.TEXT_DIM}; background: rgba(10, 37, 59, 150);
+                border: 1px solid {C.BORDER_A}; border-radius: 7px;
+            }}
+            QPushButton:hover, QPushButton:checked {{
+                color: {C.PRI}; border-color: {C.PRI};
+                background: {C.PRI_GHO};
+            }}
+        """)
+        self._monitor_btn.clicked.connect(self._toggle_diagnostics)
+        lay.addWidget(self._monitor_btn)
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
@@ -4378,6 +4641,14 @@ class MainWindow(QMainWindow):
         remote_btn.clicked.connect(self._open_remote)
         lay.addWidget(remote_btn)
 
+        file_btn = QPushButton("▣  OPEN FILE")
+        file_btn.setFixedHeight(26)
+        file_btn.setFont(QFont("Courier New", 7))
+        file_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        file_btn.setStyleSheet(_BTN_STYLE_DIM)
+        file_btn.clicked.connect(self._open_file_dialog)
+        lay.addWidget(file_btn)
+
         fs_btn = QPushButton("⛶  FULLSCREEN  [F11]")
         fs_btn.setFixedHeight(26)
         fs_btn.setFont(QFont("Courier New", 7))
@@ -4504,6 +4775,17 @@ class MainWindow(QMainWindow):
         self._quick_drawer.setFixedWidth(_W)
         self._quick_drawer.adjustSize()
         self._quick_drawer.setGeometry(12, 54, _W, self._quick_drawer.sizeHint().height())
+
+    def _open_file_dialog(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Open file for {self._assistant_name}",
+            "", "All files (*.*)"
+        )
+        if path:
+            self._on_file_selected(path)
+        if hasattr(self, "_drawer_btn"):
+            self._drawer_btn.setChecked(False)
+            self._quick_drawer.hide()
 
     def _build_input_row(self) -> QHBoxLayout:
         row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(0)

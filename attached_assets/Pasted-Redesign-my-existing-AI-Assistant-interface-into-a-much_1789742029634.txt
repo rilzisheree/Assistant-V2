@@ -1,0 +1,233 @@
+Redesign my existing AI Assistant interface into a much cleaner, more immersive JARVIS-style AI system interface.
+
+IMPORTANT:
+
+* This is a DESIGN/UI redesign only.
+* Do NOT remove, break, rename, or change any existing functionality, commands, backend logic, APIs, event handlers, or behavior.
+* Preserve the existing application structure and interactions.
+* Only modify the visual layout, styling, animations, and presentation.
+
+### CORE CONCEPT
+
+The central AI CORE/orb should become the primary visual focus of the entire interface.
+
+Remove the need for permanent large left/right information panels. The interface should feel like one cohesive AI system rather than a collection of separate HUD panels.
+
+Keep the overall design:
+
+* Dark
+* Minimal
+* Extremely modern
+* Dense but NOT cluttered
+* Premium
+* Futuristic
+* JARVIS-inspired
+* Compact with very little wasted space
+* Technical and sophisticated
+
+Do NOT make it look like a generic sci-fi dashboard or radar HUD.
+
+### CENTRAL AI CORE
+
+Keep the central orb/core as the centerpiece.
+
+Redesign it with much more intricate micro-detail while keeping its overall footprint compact.
+
+Add:
+
+* Multiple subtle internal layers
+* Fine circuitry
+* Small geometric nodes
+* Tiny data points
+* Segmented arcs
+* Subtle energy movement
+* Fine signal/waveform details
+* Small technical markings
+* Tiny telemetry indicators
+* Very subtle scanlines
+* Layered depth and holographic effects
+* Controlled glow/bloom
+* Small asymmetric technical details
+
+Avoid giant concentric circles and oversized rings.
+
+The core should look like an advanced neural AI processor rather than a decorative glowing circle.
+
+### SYSTEM TELEMETRY
+
+Move the information currently displayed in the side system panels directly into/around the orb.
+
+Integrate:
+
+CPU
+MEM
+GPU
+NET
+TMP
+
+into the orb's surrounding geometry.
+
+These should appear as tiny, elegant telemetry elements integrated into the core rather than separate panels.
+
+For example:
+CPU 24%
+GPU 41%
+MEM 38%
+NET ↑ 18KB/s ↓ 4KB/s
+TMP 43°C
+
+Do NOT simply place these as a boring vertical list.
+
+Make them follow the orb's geometry using tiny indicators, segmented meters, dots, micro-bars, or small technical labels.
+
+They should feel like native components of the AI core.
+
+When system values change, allow subtle animations so the orb feels alive.
+
+### REMOVE PERMANENT SIDE PANELS
+
+Remove the large/permanent left and right panels such as:
+
+* Activity Log
+* System Monitor
+* AI Active
+* Core
+* Security status
+* Protocol information
+
+Do NOT delete their functionality.
+
+Instead, convert them into contextual/expandable interfaces.
+
+The main screen should primarily contain:
+
+CENTRAL AI CORE
++
+BOTTOM COMMAND INTERFACE
+
+Everything else should appear only when needed.
+
+### ACTIVITY LOG — JARVIS-STYLE CONTEXTUAL WINDOW
+
+The Activity Log should no longer permanently occupy part of the screen.
+
+When the AI performs an interaction or executes a command, create a small elegant floating window that appears near the core.
+
+This window should show:
+
+1. WHAT THE USER ASKED
+2. WHAT THE AI RESPONDED
+3. WHAT THE SYSTEM ACTUALLY DID
+4. THE RESULT/STATUS
+
+Example:
+
+ACTIVITY
+
+YOU
+"Open Spotify and play my playlist."
+
+AI
+"Opening Spotify and starting your playlist."
+
+SYSTEM
+→ Application: Spotify
+→ Action: Launch
+→ Action: Play playlist
+→ Status: SUCCESS
+
+20:41:05   COMPLETE ●
+
+The window should feel like a futuristic JARVIS diagnostic/action window, NOT a conventional chat box.
+
+Use:
+
+* Thin borders
+* Small typography
+* Compact spacing
+* Subtle glass/holographic transparency
+* Tiny technical labels
+* Smooth appearance/disappearance
+* Minimal animation
+* Compact dimensions
+
+The activity window should appear when something happens and then minimize/fade away when no longer needed.
+
+### SYSTEM MONITOR
+
+The detailed system monitor should also become an expandable contextual interface.
+
+The default state only shows the tiny CPU/MEM/GPU/NET/TMP telemetry around the orb.
+
+If the user activates the system monitor, temporarily expand those values into a compact detailed diagnostic window.
+
+Do not permanently occupy screen space.
+
+### BOTTOM COMMAND AREA
+
+Keep the existing bottom command interface.
+
+Make it feel like the primary interaction point.
+
+It should remain compact and modern, with:
+
+* Voice/listening indicator
+* Input area
+* Microphone/voice state
+* AI processing state
+* Subtle animations
+
+Do not make the command bar huge.
+
+### INTERACTION PHILOSOPHY
+
+The UI should be minimal when idle.
+
+When the user speaks or the AI performs an action, the interface should dynamically come alive.
+
+Example sequence:
+
+USER SPEAKS
+→ Core reacts
+→ Telemetry subtly changes
+→ Processing indicators appear
+→ Activity window materializes
+→ AI response appears
+→ System actions appear
+→ SUCCESS/COMPLETE state
+→ Activity window fades/minimizes
+→ Interface returns to minimal idle state
+
+The goal is to make it feel like:
+
+"This is an AI system operating in front of me."
+
+Not:
+
+"This is a dashboard filled with panels."
+
+### VISUAL DENSITY
+
+Very important:
+
+I want MORE DETAIL, but NOT MORE CLUTTER.
+
+Use extremely small technical details and micro-elements to create complexity.
+
+The interface should look relatively simple from a distance, but when you look closely there should be a huge amount of sophisticated detail.
+
+Avoid:
+
+* Huge HUD rings
+* Giant text
+* Massive panels
+* Excessive empty space
+* Generic sci-fi radar graphics
+* Overly bright neon effects
+* Excessive transparency
+* Unnecessary widgets
+* Cluttered layouts
+
+Make the interface feel like a polished futuristic AI operating system.
+
+Preserve the existing functionality completely while transforming the visual design into this new architecture.
