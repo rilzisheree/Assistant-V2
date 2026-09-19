@@ -1,0 +1,195 @@
+The Messenger flow has progressed further, but now Test Escalation fails with:
+
+`Messenger call was not verified: Messenger call failed safely; PyAutoGUI fail-safe triggered from mouse moving to a corner of the screen. To disable this fail-safe, set pyautogui.FAILSAFE to False. DISABLING FAIL-SAFE IS NOT RECOMMENDED.`
+
+DO NOT disable `pyautogui.FAILSAFE`.
+
+The fail-safe is doing its job. The real problem is that our coordinate pipeline is sometimes producing an invalid coordinate near a screen corner.
+
+## FIX THE ROOT CAUSE
+
+Before ANY automated `pyautogui.moveTo()` during Messenger escalation, log and validate the destination.
+
+Log:
+
+`Requested moveTo: X=?, Y=?`
+`Screen size: WxH`
+`Current cursor: X=?, Y=?`
+`Detected button coordinate: X=?, Y=?`
+`Coordinate source: screenshot / vision / converted`
+`Coordinate transformations: ...`
+
+Then validate:
+
+* X must be within the actual desktop bounds
+* Y must be within the actual desktop bounds
+* X/Y must NOT be an emergency corner
+* the coordinate must be reasonably close to the detected Messenger button
+
+If the calculated destination is suspicious, DO NOT move the mouse.
+
+Instead:
+
+`INVALID MOUSE DESTINATION — ABORTING SAFE`
+
+and record the complete coordinate diagnostic.
+
+## DO NOT DO THIS
+
+Do NOT:
+
+* set `pyautogui.FAILSAFE = False`
+* catch the fail-safe and continue
+* clamp bad coordinates to `(0,0)`
+* clamp them to `(screen_width-1, screen_height-1)`
+* add arbitrary offsets
+* add arbitrary multipliers
+* retry the same invalid coordinate repeatedly
+
+That would hide the bug.
+
+## ADD A "SAFE MOVE" WRAPPER
+
+All Messenger automation mouse movements should go through one validation layer.
+
+Conceptually:
+
+`calculate destination`
+→ `validate destination`
+→ `log destination`
+→ `moveTo`
+→ `verify actual cursor position`
+
+If validation fails, stop the escalation safely.
+
+After `moveTo`, immediately call:
+
+`pyautogui.position()`
+
+and log the actual position.
+
+The requested and actual coordinates should match.
+
+## IMPORTANT: FIND OUT WHY IT IS HITTING A CORNER
+
+Investigate whether this is caused by:
+
+1. Vision model returning `(0,0)` or a near-corner coordinate
+2. Failed visual detection being converted into a default `(0,0)`
+3. `None`/missing coordinates being converted to zero
+4. Screenshot crop offset being wrong
+5. Screenshot resize mapping being wrong
+6. DPI scaling
+7. Browser fullscreen coordinate conversion
+8. Monitor/virtual-desktop coordinates
+9. A stale coordinate from an earlier screenshot
+10. An exception fallback that returns a corner coordinate
+11. A coordinate conversion overflow/invalid value
+12. A safety routine intentionally moving the mouse to a corner
+13. `screen_click` or another helper applying an incorrect transformation
+
+Search the entire mouse-control path for any fallback such as:
+
+`(0, 0)`
+`0, 0`
+`screen_width`
+`screen_height`
+`None`
+`except: return ...`
+
+and determine whether one of those is causing this.
+
+## VERY IMPORTANT: STALE SCREENSHOTS
+
+Make sure the Messenger button coordinate comes from the SAME screenshot that is currently displayed.
+
+The sequence must be:
+
+`F11`
+→ `wait`
+→ `capture screenshot`
+→ `detect phone button`
+→ `convert coordinate`
+→ `validate coordinate`
+→ `move cursor`
+
+Do NOT detect the button from an older screenshot and then move using that coordinate after the browser has changed.
+
+## USE THE ACTUAL SCREENSHOT AS THE SOURCE OF TRUTH
+
+The screenshot I provide can also be used as a visual reference for the Messenger fullscreen layout.
+
+But do NOT simply hardcode the phone button's pixel position from my screenshot.
+
+The actual runtime screenshot must still be captured dynamically.
+
+The reference screenshot is useful for understanding:
+
+* Messenger layout
+* exact location of the phone button
+* browser fullscreen structure
+* whether the button is in the header
+* relative position of the button
+* expected visual appearance
+
+Runtime coordinates must still come from the current runtime screenshot.
+
+## ADD A DEBUG OVERLAY IF POSSIBLE
+
+For diagnostic mode, after detecting the phone button, create a debug image containing:
+
+* the Messenger screenshot
+* a crosshair at the detected button coordinate
+* the detected X/Y printed beside it
+* screenshot dimensions
+* coordinate transformation information
+
+Save/display this diagnostic image during Test Escalation.
+
+This will let us immediately see:
+
+**"The AI thinks the phone button is HERE."**
+
+If the crosshair is visibly somewhere else, the visual detection is wrong.
+
+If the crosshair is directly on the phone button but PyAutoGUI moves somewhere else, the coordinate conversion is wrong.
+
+That distinction is critical.
+
+## TEST MODE
+
+For the next test:
+
+WhatsApp should continue normally.
+
+Messenger:
+
+1. Open direct URL.
+2. F11 fullscreen.
+3. Capture fresh screenshot.
+4. Detect 📞.
+5. Generate diagnostic coordinate/crosshair.
+6. Validate destination.
+7. Move cursor ONLY if destination is valid.
+8. Do NOT click yet.
+9. Log actual cursor position.
+
+If the coordinate is invalid or points toward a screen corner:
+
+STOP.
+
+Do not trigger PyAutoGUI fail-safe.
+
+Report the complete diagnostic instead.
+
+## NEVER DISABLE FAIL-SAFE
+
+Keep:
+
+`pyautogui.FAILSAFE = True`
+
+The fail-safe is protecting the machine while we debug this.
+
+The goal is to make the automation produce the correct coordinate so the fail-safe never triggers in the first place.
+
+Do not change unrelated parts of the application.
