@@ -7,6 +7,7 @@ import string
 import subprocess
 import sys
 import ctypes
+from ctypes import wintypes
 
 if platform.system() == "Windows":
     _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
@@ -99,23 +100,173 @@ def _require_pyautogui():
 
 
 def _physical_screen_size() -> tuple[int, int] | None:
-    """Return the desktop pixel dimensions reported by the OS, when available."""
+    """Return the physical virtual-desktop dimensions reported by Windows."""
     if platform.system() != "Windows":
         return None
     try:
         user32 = ctypes.windll.user32
         return (
-            int(user32.GetSystemMetrics(0)),
-            int(user32.GetSystemMetrics(1)),
+            int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
+            int(user32.GetSystemMetrics(79)),  # SM_CYVIRTUALSCREEN
         )
     except Exception:
         return None
+
+
+def _windows_display_diagnostics() -> dict:
+    """Return measured Windows display geometry without guessing a scale factor."""
+    result = {
+        "dpi_scale": "not-applicable",
+        "process_dpi_aware": _DPI_AWARENESS,
+        "monitor_count": None,
+        "monitors": [],
+        "primary_monitor": None,
+        "virtual_desktop_bounds": None,
+    }
+    if platform.system() != "Windows":
+        return result
+
+    try:
+        user32 = ctypes.windll.user32
+        dpi = int(user32.GetDpiForSystem()) if hasattr(user32, "GetDpiForSystem") else 96
+        result["dpi_scale"] = f"{dpi} DPI ({dpi / 96:.0%})"
+        result["virtual_desktop_bounds"] = {
+            "left": int(user32.GetSystemMetrics(76)),   # SM_XVIRTUALSCREEN
+            "top": int(user32.GetSystemMetrics(77)),    # SM_YVIRTUALSCREEN
+            "width": int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
+            "height": int(user32.GetSystemMetrics(79)), # SM_CYVIRTUALSCREEN
+        }
+        primary = user32.MonitorFromPoint(wintypes.POINT(0, 0), 2)
+        result["primary_monitor"] = int(primary) if primary else None
+
+        monitors = []
+        monitor_enum = getattr(user32, "EnumDisplayMonitors", None)
+        if monitor_enum:
+            monitor_enum.restype = ctypes.c_bool
+            monitor_enum.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_ulong,
+            ]
+
+            callback_type = ctypes.WINFUNCTYPE(
+                ctypes.c_bool,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.POINTER(wintypes.RECT),
+                ctypes.c_long,
+            )
+
+            @callback_type
+            def callback(handle, _dc, rect_ptr, _data):
+                rect = rect_ptr.contents
+                monitors.append(
+                    {
+                        "handle": int(handle),
+                        "left": int(rect.left),
+                        "top": int(rect.top),
+                        "width": int(rect.right - rect.left),
+                        "height": int(rect.bottom - rect.top),
+                        "primary": int(handle) == int(primary) if primary else False,
+                    }
+                )
+                return True
+
+            monitor_enum(None, None, callback, 0)
+        result["monitors"] = monitors
+        result["monitor_count"] = len(monitors)
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
+
+
+def _desktop_capture():
+    """Capture the same desktop coordinate space used by pointer automation.
+
+    On Windows, ImageGrab(all_screens=True) includes the virtual desktop and
+    exposes the monitor origin. PyAutoGUI's default screenshot can silently
+    omit secondary displays, which makes a correct vision coordinate wrong for
+    the physical cursor.
+    """
+    _require_pyautogui()
+    if platform.system() == "Windows":
+        try:
+            from PIL import ImageGrab
+
+            image = ImageGrab.grab(all_screens=True)
+            bounds = (_windows_display_diagnostics().get("virtual_desktop_bounds") or {})
+            origin = (
+                int(bounds.get("left", 0)),
+                int(bounds.get("top", 0)),
+            )
+            return image, origin, "PIL.ImageGrab(all_screens=True)"
+        except Exception as exc:
+            print(f"[ComputerControl] ⚠️ Full virtual-desktop capture unavailable: {exc}")
+
+    return pyautogui.screenshot(), (0, 0), "pyautogui.screenshot()"
+
+
+def _run_coordinate_calibration() -> dict:
+    """Move through known points and capture measured coordinate metadata.
+
+    This is intentionally diagnostic-only: it never clicks or presses a key.
+    The saved frames make it possible to compare the desktop state at each
+    cursor position on the real Windows machine.
+    """
+    _require_pyautogui()
+    screen_size = tuple(int(value) for value in pyautogui.size())
+    display = _windows_display_diagnostics()
+    bounds = display.get("virtual_desktop_bounds") or {}
+    width = int(bounds.get("width") or screen_size[0])
+    height = int(bounds.get("height") or screen_size[1])
+    points = [
+        (0, 0),
+        (max(0, width // 2), max(0, height // 2)),
+        (max(0, width - 1), max(0, height - 1)),
+    ]
+    output_dir = Path.home() / "Desktop" / "jarvis_coordinate_calibration"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stages = []
+    previous_failsafe = pyautogui.FAILSAFE
+    pyautogui.FAILSAFE = False
+    try:
+        for index, requested in enumerate(points, start=1):
+            pyautogui.moveTo(requested[0], requested[1], duration=0.2)
+            time.sleep(0.2)
+            actual = tuple(int(value) for value in pyautogui.position())
+            image, origin, backend = _desktop_capture()
+            path = output_dir / f"stage_{index}_{requested[0]}_{requested[1]}.png"
+            image.save(str(path))
+            stage = {
+                "requested": requested,
+                "actual_pyautogui": actual,
+                "screenshot_size": tuple(int(value) for value in image.size),
+                "screenshot_origin": origin,
+                "capture_backend": backend,
+                "path": str(path),
+            }
+            stages.append(stage)
+            print(
+                "[ComputerControl] CALIBRATION "
+                f"stage={index} requested={requested} actual={actual} "
+                f"screenshot={stage['screenshot_size']} origin={origin} "
+                f"path={path}"
+            )
+    finally:
+        pyautogui.FAILSAFE = previous_failsafe
+    return {
+        "pyautogui_size": screen_size,
+        "display": display,
+        "stages": stages,
+    }
 
 
 def _coordinate_mapping(
     screenshot_size: tuple[int, int],
     screen_size: tuple[int, int],
     physical_size: tuple[int, int] | None,
+    screenshot_origin: tuple[int, int] = (0, 0),
 ) -> tuple[tuple[float, float] | None, str, str | None]:
     """Return a coordinate scale only when the measured spaces justify it.
 
@@ -124,20 +275,25 @@ def _coordinate_mapping(
     which side is scaled; without that evidence, guessing would be worse than
     refusing the action.
     """
-    if screenshot_size == screen_size:
-        return (1.0, 1.0), "direct", None
-
     if physical_size == screenshot_size:
+        origin_text = (
+            f"+origin({screenshot_origin[0]},{screenshot_origin[1]})"
+            if screenshot_origin != (0, 0)
+            else ""
+        )
+        return (1.0, 1.0), f"direct{origin_text}", None
+
+    if screenshot_size == screen_size:
         return (
-            screen_size[0] / screenshot_size[0],
-            screen_size[1] / screenshot_size[1],
-        ), "measured-physical-to-pyautogui", None
+            1.0,
+            1.0,
+        ), "direct-primary", None
 
     if physical_size == screen_size:
         return (
             screen_size[0] / screenshot_size[0],
             screen_size[1] / screenshot_size[1],
-        ), "measured-screenshot-to-physical", None
+        ), "measured-screenshot-to-primary", None
 
     return (
         None,
@@ -309,7 +465,7 @@ def _clipboard_paste(text: str) -> str:
 def _screenshot(save_path: str | None = None) -> str:
     _require_pyautogui()
     path = _safe_screenshot_path(save_path)
-    img  = pyautogui.screenshot()
+    img, _origin, _backend = _desktop_capture()
     img.save(str(path))
     return f"Screenshot saved: {path}"
 
@@ -394,18 +550,28 @@ def _screen_find(
 
         _require_pyautogui()
         screen_size = tuple(int(value) for value in pyautogui.size())
-        img = pyautogui.screenshot()
+        img, screenshot_origin, capture_backend = _desktop_capture()
         screenshot_size = tuple(int(value) for value in img.size)
+        display = _windows_display_diagnostics()
+        physical_size = _physical_screen_size()
         buf   = io.BytesIO()
         img.save(buf, format="PNG")
         image_bytes = buf.getvalue()
 
         prompt = (
             f"This is a full-desktop screenshot measuring "
-            f"{screenshot_size[0]}×{screenshot_size[1]} pixels with origin (0,0). "
+            f"{screenshot_size[0]}×{screenshot_size[1]} pixels with origin "
+            f"{screenshot_origin}. "
             f"Locate the UI element described as: '{description}'. "
             f"Reply with ONLY the center coordinates as: x,y "
             f"If the element is not visible, reply: NOT_FOUND"
+        )
+        print(
+            "[ComputerControl] SCREEN_COORDINATE_CAPTURE "
+            f"original_screenshot={screenshot_size} "
+            f"vision_image={screenshot_size} "
+            f"origin={screenshot_origin} backend={capture_backend} "
+            f"pyautogui={screen_size} physical_virtual={physical_size}"
         )
 
         from core import gemini
@@ -423,15 +589,19 @@ def _screen_find(
             match = re.search(r"(\d+)\s*,\s*(\d+)", text)
             coords = (int(match.group(1)), int(match.group(2))) if match else None
 
-        physical_size = _physical_screen_size()
         scale, transform, mapping_error = _coordinate_mapping(
-            screenshot_size, screen_size, physical_size
+            screenshot_size, screen_size, physical_size, screenshot_origin
         )
         raw_coords = coords
+        converted_screenshot_coordinate = None
         if coords and scale is not None:
-            coords = (
+            converted_screenshot_coordinate = (
                 round(coords[0] * scale[0]),
                 round(coords[1] * scale[1]),
+            )
+            coords = (
+                round(screenshot_origin[0] + converted_screenshot_coordinate[0]),
+                round(screenshot_origin[1] + converted_screenshot_coordinate[1]),
             )
         elif mapping_error:
             coords = None
@@ -446,16 +616,23 @@ def _screen_find(
             "physical_screen_size": physical_size,
             "pyautogui_screen_size": screen_size,
             "screenshot_size": screenshot_size,
-            "screenshot_origin": (0, 0),
-            "screenshot_crop_offset": (0, 0),
+            "vision_image_size": screenshot_size,
+            "screenshot_origin": screenshot_origin,
+            "screenshot_crop_offset": screenshot_origin,
             "raw_coordinates": raw_coords,
+            "converted_screenshot_coordinate": converted_screenshot_coordinate,
             "final_coordinates": coords,
             "coordinate_scale": scale,
             "coordinate_transform": transform,
             "coordinate_mapping_error": mapping_error,
-            "direct_coordinates": transform == "direct",
-            "coordinate_space": "full-desktop screenshot; origin=(0,0)",
+            "direct_coordinates": bool(transform and transform.startswith("direct")),
+            "coordinate_space": (
+                "full-desktop screenshot; "
+                f"origin={screenshot_origin}"
+            ),
             "windows_dpi_awareness": _DPI_AWARENESS,
+            "display_diagnostics": display,
+            "capture_backend": capture_backend,
         }
         return (coords, diagnostics) if return_diagnostics else coords
 

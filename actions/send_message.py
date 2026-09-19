@@ -383,6 +383,10 @@ def _find_messenger_call_button(
             f"Screenshot: {metadata.get('screenshot_size', 'unavailable')}"
         )
         print(
+            "Vision image size: "
+            f"{metadata.get('vision_image_size', 'unavailable')}"
+        )
+        print(
             "PyAutoGUI screen: "
             f"{metadata.get('pyautogui_screen_size', 'unavailable')}"
         )
@@ -394,13 +398,15 @@ def _find_messenger_call_button(
         print(f"PyAutoGUI screen size: {metadata.get('pyautogui_screen_size', 'unavailable')}")
         print(f"Screenshot size: {metadata.get('screenshot_size', 'unavailable')}")
         print(f"Screenshot origin: {metadata.get('screenshot_origin', '(0, 0)')}")
-        print(f"Desktop size: {metadata.get('pyautogui_screen_size', 'unavailable')}")
+        print(f"Desktop size: {metadata.get('physical_screen_size', 'unavailable')}")
         print(f"Messenger window position/size: {_active_window_dimensions()}")
         print(f"Screenshot crop/offset: {metadata.get('screenshot_crop_offset', 'unavailable')}")
         print(f"MODEL / SCREENSHOT COORDINATE: {metadata.get('raw_coordinates', 'NOT_FOUND')}")
         print(f"DESKTOP / PyAutoGUI COORDINATE: {metadata.get('final_coordinates', 'NOT_FOUND')}")
         print(f"Coordinate transform: {metadata.get('coordinate_transform', 'unavailable')}")
         print(f"Coordinate scale: {metadata.get('coordinate_scale', 'unavailable')}")
+        print(f"Capture backend: {metadata.get('capture_backend', 'unavailable')}")
+        print(f"Display diagnostics: {metadata.get('display_diagnostics', 'unavailable')}")
         if metadata.get("coordinate_mapping_error"):
             print(f"Coordinate mapping error: {metadata['coordinate_mapping_error']}")
         print(f"Windows DPI scaling: {_windows_dpi_scaling()}")
@@ -615,7 +621,7 @@ def start_messenger_call_verified(
                 ).strip(),
             }
         print("MESSENGER_SCREEN_CAPTURED coordinate_reference=fullscreen")
-        from actions.computer_control import _click
+        from actions.computer_control import _click, _run_coordinate_calibration
 
         coords, _mapping = _find_messenger_call_button(diagnostic=diagnostic)
         if not coords:
@@ -627,6 +633,23 @@ def start_messenger_call_verified(
         print(f"MESSENGER_CALL_BUTTON_FOUND coordinates={coords}")
         cursor_before = pyautogui.position()
         if diagnostic:
+            calibration = _run_coordinate_calibration()
+            print("=== SCREEN COORDINATE DIAGNOSTIC ===")
+            print(f"Windows DPI scale: {_mapping.get('display_diagnostics', {}).get('dpi_scale', 'unavailable')}")
+            print(f"Process DPI aware: {_mapping.get('windows_dpi_awareness', 'unavailable')}")
+            print(f"Monitor count: {_mapping.get('display_diagnostics', {}).get('monitor_count', 'unavailable')}")
+            print(f"Virtual desktop bounds: {_mapping.get('display_diagnostics', {}).get('virtual_desktop_bounds', 'unavailable')}")
+            print(f"Primary monitor: {_mapping.get('display_diagnostics', {}).get('primary_monitor', 'unavailable')}")
+            print(f"PyAutoGUI size: {calibration.get('pyautogui_size', 'unavailable')}")
+            print(f"Screenshot size: {_mapping.get('screenshot_size', 'unavailable')}")
+            print(f"Vision image size: {_mapping.get('vision_image_size', 'unavailable')}")
+            print(f"Screenshot crop/origin: {_mapping.get('screenshot_origin', 'unavailable')}")
+            print(f"Browser window position: {_mapping.get('window_position', fullscreen_diagnostics.get('window_position', 'unavailable'))}")
+            print(f"Browser window size: {_mapping.get('window_size', fullscreen_diagnostics.get('window_size', 'unavailable'))}")
+            print(f"AI detected coordinate: {_mapping.get('raw_coordinates', 'unavailable')}")
+            print(f"Converted screenshot coordinate: {_mapping.get('converted_screenshot_coordinate', 'unavailable')}")
+            print(f"Final desktop coordinate: {_mapping.get('final_coordinates', 'unavailable')}")
+            print(f"Coordinate transformation applied: {_mapping.get('coordinate_transform', 'unavailable')}")
             print(
                 "WINDOW POSITION: "
                 f"{fullscreen_diagnostics.get('window_position', 'unavailable')}"
@@ -656,19 +679,20 @@ def start_messenger_call_verified(
                 cursor_moved[0] == coords[0] and cursor_moved[1] == coords[1]
             )
             print(f"Requested/actual cursor match: {cursor_match}")
-            print("CALL_BUTTON_CURSOR_MOVED diagnostic_only=true")
+            print("CALL_BUTTON_DETECTED")
+            print("CALL_BUTTON_COORDINATE_CONVERTED")
+            print("CURSOR_MOVED diagnostic_only=true")
             return {
                 "connected": None,
-                "state": "CALL_BUTTON_CURSOR_MOVED",
+                "state": "CURSOR_MOVED",
                 "detail": (
-                    "Messenger phone button coordinate was found and the cursor "
-                    "was moved to the measured PyAutoGUI coordinate. No click "
-                    "was attempted; physical visual alignment still requires "
-                    "inspection of the screen."
+                    "Diagnostic mode moved the cursor to the converted coordinate "
+                    "without clicking. This does not claim physical alignment."
                 ),
                 "diagnostics": {
                     **fullscreen_diagnostics,
                     **_mapping,
+                    "calibration": calibration,
                     "requested_cursor_coordinate": tuple(coords),
                     "actual_cursor_coordinate": tuple(cursor_moved),
                     "cursor_coordinate_match": cursor_match,
