@@ -9,6 +9,7 @@ not silently lose an escalation that was already requested.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,6 +20,9 @@ from typing import Any
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _STORE = _BASE_DIR / "memory" / "reminder_escalations.json"
 _LOCK = threading.RLock()
+_DEFAULT_MESSENGER_ESCALATION_URL = (
+    "https://www.messenger.com/e2ee/t/7721188384660930"
+)
 
 _ACTIVE_STATES = {
     "scheduled",
@@ -77,6 +81,11 @@ def normalize_config(config: dict[str, Any] | None) -> dict[str, Any]:
         "messenger_contact_name": str(
             config.get("messenger_contact_name", "")
         ).strip(),
+        "messenger_escalation_url": str(
+            config.get("messenger_escalation_url")
+            or os.environ.get("MESSENGER_ESCALATION_URL")
+            or _DEFAULT_MESSENGER_ESCALATION_URL
+        ).strip(),
         "initial_message": str(config.get("initial_message", "")).strip(),
         "user_response_timeout_minutes": _minutes(
             config.get("user_response_timeout_minutes"), 15
@@ -93,6 +102,11 @@ def normalize_config(config: dict[str, Any] | None) -> dict[str, Any]:
             config.get("max_call_duration_minutes"), 5, maximum=120
         ),
     }
+
+
+def get_messenger_escalation_url(config: dict[str, Any] | None = None) -> str:
+    """Return the configured direct Messenger conversation URL."""
+    return str(normalize_config(config).get("messenger_escalation_url", "")).strip()
 
 
 def register(

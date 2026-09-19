@@ -1,0 +1,77 @@
+The escalation test successfully worked through WhatsApp, but the Messenger step failed because it used Ctrl+F to search for my dad's name.
+
+Change ONLY the Messenger contact-selection portion.
+
+I have a direct Messenger conversation URL that opens directly to my dad's DM:
+
+https://www.messenger.com/e2ee/t/7721188384660930
+
+Use this URL instead of searching for `شريف كمال`.
+
+## New Messenger escalation flow
+
+When the WhatsApp response timeout expires:
+
+1. Open/focus the existing browser.
+2. Navigate directly to the configured Messenger conversation URL.
+3. Wait for Messenger Web to load.
+4. Verify that the expected Messenger conversation is actually visible/loaded.
+5. Locate the voice-call button using the existing screen/visual/browser-control capabilities.
+6. Click the voice-call button.
+7. Verify that the call was actually initiated.
+8. Verify that the call is actually connected before reporting `CALL_CONNECTED`.
+9. Only after the call is confirmed connected should the existing Gemini voice integration attempt to start.
+
+Do NOT:
+
+* Use Ctrl+F.
+* Search for `شريف كمال`.
+* Search Messenger contacts.
+* Guess the conversation.
+* Use hardcoded screen coordinates if the existing visual detection can identify the call button.
+* Create another browser automation system.
+
+## Configuration
+
+Do not hardcode the URL directly into the escalation logic if the project already has a configuration/settings system.
+
+Add a configurable setting such as:
+
+`MESSENGER_ESCALATION_URL`
+
+with this value:
+
+https://www.messenger.com/e2ee/t/7721188384660930
+
+If there is already an appropriate escalation configuration object, add the URL there instead of creating unnecessary new configuration infrastructure.
+
+## Important
+
+Keep everything else exactly the same.
+
+WhatsApp behavior is already working, so DO NOT modify it.
+
+Do not change:
+
+* Reminder scheduling
+* Daily/weekly reminders
+* Escalation timing
+* WhatsApp message
+* Baba response detection
+* Cancellation
+* Test Escalation button
+* Activity Log
+* Gemini integration
+* Existing browser/computer-control architecture
+
+Only replace:
+
+`Messenger contact search → direct Messenger conversation URL`
+
+with:
+
+`Open configured Messenger conversation URL → call Dad`
+
+Also make sure the instant **Test Escalation** button uses this same direct URL so I can test the Messenger portion immediately without waiting for the normal reminder timeout.
+
+After making the change, tell me exactly what files were modified and whether the Messenger URL is now being used by both production escalation and the Test Escalation button.

@@ -125,6 +125,14 @@ def _open_browser_url(url: str) -> bool:
         print(f"[SendMessage] ⚠️ Could not open browser: {e}")
         return False
 
+
+def _messenger_escalation_url(url: str | None = None) -> str:
+    if url and str(url).strip():
+        return str(url).strip()
+    from core.reminder_escalation import get_messenger_escalation_url
+    return get_messenger_escalation_url()
+
+
 def _search_in_app(query: str) -> None:
     _require_pyautogui()
     os_name = _get_os()
@@ -312,7 +320,11 @@ def _send_messenger(receiver: str, message: str) -> str:
     return f"Message sent to {receiver} via Messenger."
 
 
-def start_messenger_call(receiver: str, max_duration_minutes: int = 5) -> str:
+def start_messenger_call(
+    receiver: str,
+    max_duration_minutes: int = 5,
+    conversation_url: str | None = None,
+) -> str:
     """Open a Messenger conversation and attempt its audio-call control.
 
     Messenger's logged-in browser session and UI vary by account and browser,
@@ -321,14 +333,9 @@ def start_messenger_call(receiver: str, max_duration_minutes: int = 5) -> str:
     has no audio bridge from Messenger into the Gemini Live session.
     """
     _require_pyautogui()
-    if not _open_browser_url("https://www.messenger.com/"):
+    if not _open_browser_url(_messenger_escalation_url(conversation_url)):
         return "Could not open Messenger for the call attempt."
 
-    _search_in_app(receiver)
-    time.sleep(0.5)
-    pyautogui.press("down")
-    time.sleep(0.3)
-    pyautogui.press("enter")
     time.sleep(1.5)
 
     try:
@@ -351,22 +358,20 @@ def start_messenger_call(receiver: str, max_duration_minutes: int = 5) -> str:
 
 
 def start_messenger_call_verified(
-    receiver: str, max_duration_minutes: int = 5
+    receiver: str,
+    max_duration_minutes: int = 5,
+    conversation_url: str | None = None,
 ) -> dict:
     """Start a Messenger call only after verifying contact and connection."""
     _require_pyautogui()
     try:
-        if not _open_browser_url("https://www.messenger.com/"):
+        if not _open_browser_url(_messenger_escalation_url(conversation_url)):
             return {"connected": False, "detail": "Could not open Messenger Web."}
-        _search_in_app(receiver)
-        time.sleep(0.5)
-        pyautogui.press("down")
-        time.sleep(0.3)
-        pyautogui.press("enter")
         time.sleep(1.5)
         contact_verdict = _screen_verdict(
-            f"Is Messenger Web showing the exact contact '{receiver}'? "
-            "Use UNKNOWN unless clearly visible.",
+            f"Is Messenger Web showing the expected conversation with '{receiver}' "
+            "loaded from its direct conversation URL? Do not search for a contact "
+            "or infer the conversation. Use UNKNOWN unless clearly visible.",
             ("YES", "NO", "UNKNOWN"),
         )
         if contact_verdict != "YES":
@@ -418,21 +423,19 @@ def start_messenger_call_verified(
         return {"connected": False, "detail": f"Messenger call failed safely: {e}"}
 
 
-def verify_messenger_call_connection(receiver: str) -> dict:
+def verify_messenger_call_connection(
+    receiver: str, conversation_url: str | None = None
+) -> dict:
     """Inspect Messenger for an existing call without starting another one."""
     _require_pyautogui()
     try:
-        if not _open_browser_url("https://www.messenger.com/"):
+        if not _open_browser_url(_messenger_escalation_url(conversation_url)):
             return {"connected": None, "detail": "Could not open Messenger for recovery verification."}
-        _search_in_app(receiver)
-        time.sleep(0.5)
-        pyautogui.press("down")
-        time.sleep(0.3)
-        pyautogui.press("enter")
         time.sleep(1.0)
         verdict = _screen_verdict(
-            f"Is the existing Messenger Web call with exact contact '{receiver}' "
-            "clearly connected and in progress? Do not click anything. Reply "
+            f"Is the existing Messenger Web call in the expected conversation with "
+            f"'{receiver}' clearly connected and in progress? Do not search or click "
+            "anything. Reply "
             "CONNECTED, NOT_CONNECTED, or UNKNOWN.",
             ("CONNECTED", "NOT_CONNECTED", "UNKNOWN"),
         )

@@ -3667,6 +3667,7 @@ class RemindersSettingsOverlay(QWidget):
 
     def _payload(self):
         from datetime import datetime
+        from core.reminder_escalation import get_messenger_escalation_url
         frequency = self._frequency.currentText().lower()
         target = datetime(
             self._date.date().year(), self._date.date().month(),
@@ -3685,6 +3686,7 @@ class RemindersSettingsOverlay(QWidget):
                 "enabled": self._escalation.isChecked(),
                 "whatsapp_contact_name": "Baba",
                 "messenger_contact_name": "شريف كمال",
+                "messenger_escalation_url": get_messenger_escalation_url(),
                 "initial_message": "",
             },
         }
@@ -3823,6 +3825,7 @@ class RemindersSettingsOverlay(QWidget):
             self._test_status.setText(f"Could not delete reminder: {exc}")
 
     def _confirm_test(self):
+        from core.reminder_escalation import get_messenger_escalation_url
         answer = QMessageBox.question(
             self, "Run Escalation Test?",
             "This immediately opens WhatsApp, messages Baba, and attempts the "
@@ -3838,6 +3841,7 @@ class RemindersSettingsOverlay(QWidget):
                 "enabled": True,
                 "whatsapp_contact_name": "Baba",
                 "messenger_contact_name": "شريف كمال",
+                "messenger_escalation_url": get_messenger_escalation_url(),
                 "initial_message": "",
             })
 

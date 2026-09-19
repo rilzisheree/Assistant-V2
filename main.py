@@ -740,12 +740,16 @@ class JarvisLive:
             send_whatsapp_verified,
             start_messenger_call_verified,
         )
+        from core.reminder_escalation import get_messenger_escalation_url
 
         message = str(config.get("initial_message") or "").strip() or (
             "فكّرتك: ده اختبار تصعيد للتذكير. لو شفت الرسالة طمّنّي عليك."
         )
         whatsapp = str(config.get("whatsapp_contact_name") or "Baba").strip()
         messenger = str(config.get("messenger_contact_name") or "شريف كمال").strip()
+        messenger_url = str(
+            config.get("messenger_escalation_url") or get_messenger_escalation_url()
+        ).strip()
         self._test_progress("Reminder triggered")
         self._test_progress("Acknowledgement bypassed")
         self._test_progress("Opening WhatsApp", f"Verifying exact contact: {whatsapp}")
@@ -765,6 +769,7 @@ class JarvisLive:
                 start_messenger_call_verified,
                 messenger,
                 int(config.get("max_call_duration_minutes", 5)),
+                messenger_url,
             )
             detail = str(result.get("detail", result))
             if result.get("connected") is not True:
@@ -2421,6 +2426,7 @@ class JarvisLive:
                             start_messenger_call_verified,
                             str(config.get("messenger_contact_name", "")).strip(),
                             int(config.get("max_call_duration_minutes", 5)),
+                            str(config.get("messenger_escalation_url", "")).strip(),
                         )
                         result = str(result_data.get("detail", result_data))
                         connected = result_data.get("connected")
@@ -2442,6 +2448,7 @@ class JarvisLive:
                         result_data = await asyncio.to_thread(
                             verify_messenger_call_connection,
                             str(config.get("messenger_contact_name", "")).strip(),
+                            str(config.get("messenger_escalation_url", "")).strip(),
                         )
                         result = str(result_data.get("detail", result_data))
                         connected = result_data.get("connected")

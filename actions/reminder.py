@@ -859,6 +859,13 @@ TOOL = {
                         "type": "STRING",
                         "description": "Exact Messenger contact name: شريف كمال"
                     },
+                    "messenger_escalation_url": {
+                        "type": "STRING",
+                        "description": (
+                            "Direct Messenger conversation URL used for escalation; "
+                            "do not search Messenger contacts"
+                        )
+                    },
                     "initial_message": {
                         "type": "STRING",
                         "description": "Natural Egyptian Arabic WhatsApp message"
