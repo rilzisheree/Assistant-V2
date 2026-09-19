@@ -111,6 +111,41 @@ def _physical_screen_size() -> tuple[int, int] | None:
     except Exception:
         return None
 
+
+def _coordinate_mapping(
+    screenshot_size: tuple[int, int],
+    screen_size: tuple[int, int],
+    physical_size: tuple[int, int] | None,
+) -> tuple[tuple[float, float] | None, str, str | None]:
+    """Return a coordinate scale only when the measured spaces justify it.
+
+    PyAutoGUI and its screenshot backend can report different spaces on a
+    scaled Windows display.  The physical display dimensions let us identify
+    which side is scaled; without that evidence, guessing would be worse than
+    refusing the action.
+    """
+    if screenshot_size == screen_size:
+        return (1.0, 1.0), "direct", None
+
+    if physical_size == screenshot_size:
+        return (
+            screen_size[0] / screenshot_size[0],
+            screen_size[1] / screenshot_size[1],
+        ), "measured-physical-to-pyautogui", None
+
+    if physical_size == screen_size:
+        return (
+            screen_size[0] / screenshot_size[0],
+            screen_size[1] / screenshot_size[1],
+        ), "measured-screenshot-to-physical", None
+
+    return (
+        None,
+        "unproven-mismatch",
+        "Screenshot and PyAutoGUI dimensions differ, and the physical "
+        "desktop dimensions do not identify a safe scale.",
+    )
+
 _FIRST_NAMES = [
     "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Drew", "Quinn",
     "Avery", "Blake", "Cameron", "Dakota", "Emerson", "Finley", "Harper",
@@ -388,38 +423,38 @@ def _screen_find(
             match = re.search(r"(\d+)\s*,\s*(\d+)", text)
             coords = (int(match.group(1)), int(match.group(2))) if match else None
 
-        raw_coords = coords
-        if require_direct_coordinates and screenshot_size != screen_size:
-            raise RuntimeError(
-                "Direct coordinate mode requires the screenshot and PyAutoGUI "
-                f"spaces to match, got screenshot={screenshot_size}, "
-                f"pyautogui={screen_size}"
-            )
-        if coords and screenshot_size != screen_size:
-            # Non-fullscreen callers retain the existing runtime-derived
-            # conversion. Fullscreen callers explicitly opt into direct
-            # coordinates above; no Messenger-specific correction belongs here.
-            sx = screen_size[0] / screenshot_size[0]
-            sy = screen_size[1] / screenshot_size[1]
-            coords = (round(coords[0] * sx), round(coords[1] * sy))
-
-        physical_size = _physical_screen_size() or screen_size
-        direct = screenshot_size == screen_size
-        scale = (
-            screen_size[0] / screenshot_size[0],
-            screen_size[1] / screenshot_size[1],
+        physical_size = _physical_screen_size()
+        scale, transform, mapping_error = _coordinate_mapping(
+            screenshot_size, screen_size, physical_size
         )
+        raw_coords = coords
+        if coords and scale is not None:
+            coords = (
+                round(coords[0] * scale[0]),
+                round(coords[1] * scale[1]),
+            )
+        elif mapping_error:
+            coords = None
+
+        if require_direct_coordinates and mapping_error:
+            print(
+                "[ComputerControl] ⚠️ Direct coordinate mode rejected: "
+                f"{mapping_error}"
+            )
 
         diagnostics = {
             "physical_screen_size": physical_size,
             "pyautogui_screen_size": screen_size,
             "screenshot_size": screenshot_size,
+            "screenshot_origin": (0, 0),
             "screenshot_crop_offset": (0, 0),
             "raw_coordinates": raw_coords,
             "final_coordinates": coords,
             "coordinate_scale": scale,
-            "coordinate_transform": "direct" if direct else "runtime-scale",
-            "direct_coordinates": direct,
+            "coordinate_transform": transform,
+            "coordinate_mapping_error": mapping_error,
+            "direct_coordinates": transform == "direct",
+            "coordinate_space": "full-desktop screenshot; origin=(0,0)",
             "windows_dpi_awareness": _DPI_AWARENESS,
         }
         return (coords, diagnostics) if return_diagnostics else coords

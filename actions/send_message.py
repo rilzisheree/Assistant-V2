@@ -315,6 +315,11 @@ def _enter_messenger_fullscreen() -> tuple[bool, dict]:
     else:
         print("MESSENGER_FULLSCREEN already_active=true")
     after = _browser_window_geometry()
+    # Capture a fresh frame after F11 rather than relying on the browser
+    # geometry.  The model and the mouse both need to be measured from the
+    # same post-transition desktop state.
+    screenshot = pyautogui.screenshot()
+    screenshot_size = tuple(int(value) for value in screenshot.size)
     geometry_ok = bool(
         after
         and after["left"] <= 0
@@ -324,14 +329,25 @@ def _enter_messenger_fullscreen() -> tuple[bool, dict]:
     )
     diagnostics = {
         "screen_size": screen_size,
+        "screenshot_size": screenshot_size,
+        "screen_dimensions_match": screenshot_size == screen_size,
+        "screenshot_origin": (0, 0),
         "browser_window_before": before,
         "browser_window_after": after,
+        "window_position": (
+            (after["left"], after["top"]) if after else None
+        ),
+        "window_size": (
+            (after["width"], after["height"]) if after else None
+        ),
         "fullscreen_active": geometry_ok,
         "dpi_scaling": _windows_dpi_scaling(),
     }
     print(
         "MESSENGER_FULLSCREEN "
         f"active={geometry_ok} screen={screen_size} "
+        f"screenshot={screenshot_size} "
+        f"dimensions_match={screenshot_size == screen_size} "
         f"browser_geometry={after or 'unavailable'} "
         f"dpi={diagnostics['dpi_scaling']}"
     )
@@ -363,14 +379,30 @@ def _find_messenger_call_button(
 
     if diagnostic:
         print("CALL BUTTON DETECTION")
+        print(
+            f"Screenshot: {metadata.get('screenshot_size', 'unavailable')}"
+        )
+        print(
+            "PyAutoGUI screen: "
+            f"{metadata.get('pyautogui_screen_size', 'unavailable')}"
+        )
+        print(
+            "Screenshot dimensions identical: "
+            f"{metadata.get('screenshot_size') == metadata.get('pyautogui_screen_size')}"
+        )
         print(f"Physical screen size: {metadata.get('physical_screen_size', 'unavailable')}")
         print(f"PyAutoGUI screen size: {metadata.get('pyautogui_screen_size', 'unavailable')}")
         print(f"Screenshot size: {metadata.get('screenshot_size', 'unavailable')}")
+        print(f"Screenshot origin: {metadata.get('screenshot_origin', '(0, 0)')}")
+        print(f"Desktop size: {metadata.get('pyautogui_screen_size', 'unavailable')}")
         print(f"Messenger window position/size: {_active_window_dimensions()}")
         print(f"Screenshot crop/offset: {metadata.get('screenshot_crop_offset', 'unavailable')}")
-        print(f"Detected button X/Y: {metadata.get('raw_coordinates', 'NOT_FOUND')}")
-        print(f"Final PyAutoGUI click X/Y: {metadata.get('final_coordinates', 'NOT_FOUND')}")
+        print(f"MODEL / SCREENSHOT COORDINATE: {metadata.get('raw_coordinates', 'NOT_FOUND')}")
+        print(f"DESKTOP / PyAutoGUI COORDINATE: {metadata.get('final_coordinates', 'NOT_FOUND')}")
         print(f"Coordinate transform: {metadata.get('coordinate_transform', 'unavailable')}")
+        print(f"Coordinate scale: {metadata.get('coordinate_scale', 'unavailable')}")
+        if metadata.get("coordinate_mapping_error"):
+            print(f"Coordinate mapping error: {metadata['coordinate_mapping_error']}")
         print(f"Windows DPI scaling: {_windows_dpi_scaling()}")
         if not coords:
             print("Messenger voice-call button could not be visually identified")
@@ -595,19 +627,52 @@ def start_messenger_call_verified(
         print(f"MESSENGER_CALL_BUTTON_FOUND coordinates={coords}")
         cursor_before = pyautogui.position()
         if diagnostic:
+            print(
+                "WINDOW POSITION: "
+                f"{fullscreen_diagnostics.get('window_position', 'unavailable')}"
+            )
+            print(
+                "WINDOW SIZE: "
+                f"{fullscreen_diagnostics.get('window_size', 'unavailable')}"
+            )
+            print(
+                "DPI / SCALE: "
+                f"{fullscreen_diagnostics.get('dpi_scaling', 'unavailable')} / "
+                f"{_mapping.get('coordinate_scale', 'unavailable')}"
+            )
             print(f"Current cursor X/Y: ({cursor_before[0]}, {cursor_before[1]})")
+            print(
+                "Requested PyAutoGUI coordinate: "
+                f"({coords[0]}, {coords[1]})"
+            )
             pyautogui.moveTo(coords[0], coords[1], duration=0.3)
             time.sleep(0.7)
             cursor_moved = pyautogui.position()
-            print(f"Cursor moved to: ({cursor_moved[0]}, {cursor_moved[1]})")
-            print("CALL_BUTTON_CURSOR_VERIFIED diagnostic_only=true")
+            print(
+                "Actual cursor coordinate: "
+                f"({cursor_moved[0]}, {cursor_moved[1]})"
+            )
+            cursor_match = (
+                cursor_moved[0] == coords[0] and cursor_moved[1] == coords[1]
+            )
+            print(f"Requested/actual cursor match: {cursor_match}")
+            print("CALL_BUTTON_CURSOR_MOVED diagnostic_only=true")
             return {
                 "connected": None,
-                "state": "CALL_BUTTON_HOVERED",
+                "state": "CALL_BUTTON_CURSOR_MOVED",
                 "detail": (
-                    "Messenger phone button located and the cursor was moved "
-                    "to its calculated final coordinate. No click was attempted."
+                    "Messenger phone button coordinate was found and the cursor "
+                    "was moved to the measured PyAutoGUI coordinate. No click "
+                    "was attempted; physical visual alignment still requires "
+                    "inspection of the screen."
                 ),
+                "diagnostics": {
+                    **fullscreen_diagnostics,
+                    **_mapping,
+                    "requested_cursor_coordinate": tuple(coords),
+                    "actual_cursor_coordinate": tuple(cursor_moved),
+                    "cursor_coordinate_match": cursor_match,
+                },
             }
         click_attempted = False
         try:
