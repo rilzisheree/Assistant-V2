@@ -33,7 +33,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QGraphicsOpacityEffect, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar,
+    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMenu,
 )
 
 try:
@@ -1833,7 +1833,7 @@ class FileDropZone(QWidget):
         self._current_file = None; self._canvas.update()
 
     def _browse(self):
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self, "Select a file for JARVIS", str(Path.home()),
             "All Files (*.*);;"
             "Images (*.jpg *.jpeg *.png *.gif *.webp *.bmp *.svg);;"
@@ -1844,7 +1844,7 @@ class FileDropZone(QWidget):
             "Video (*.mp4 *.avi *.mov *.mkv *.wmv *.webm);;"
             "Archives (*.zip *.rar *.tar *.gz *.7z)",
         )
-        if path:
+        for path in paths:
             self._set_file(path)
 
     def _set_file(self, path: str):
@@ -3840,6 +3840,7 @@ class MainWindow(QMainWindow):
         self.wake_get_state    = None   # callable: () -> dict {enabled, awake, ready}
         self._muted            = False
         self._current_file: str | None = None
+        self._attachments: list[str] = []
         self._remote_overlay: RemoteKeyOverlay | None = None
         self._customize_overlay: CustomizeOverlay | None = None
 
@@ -5486,11 +5487,19 @@ class MainWindow(QMainWindow):
         self._quick_drawer.setGeometry(12, 54, _W, self._quick_drawer.sizeHint().height())
 
     def _open_file_dialog(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, f"Open file for {self._assistant_name}",
-            "", "All files (*.*)"
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, f"Attach files to {self._assistant_name}",
+            str(Path.home()),
+            "All files (*.*);;"
+            "Images (*.jpg *.jpeg *.png *.gif *.webp *.bmp *.svg);;"
+            "Documents (*.pdf *.doc *.docx *.txt *.md *.ppt *.pptx);;"
+            "Data (*.csv *.xls *.xlsx *.json *.xml);;"
+            "Code (*.py *.js *.ts *.html *.css *.java *.cpp *.go);;"
+            "Audio (*.mp3 *.wav *.ogg *.m4a *.aac *.flac);;"
+            "Video (*.mp4 *.avi *.mov *.mkv *.wmv *.webm);;"
+            "Archives (*.zip *.rar *.tar *.gz *.7z)"
         )
-        if path:
+        for path in paths:
             self._on_file_selected(path)
         if hasattr(self, "_drawer_btn"):
             self._drawer_btn.setChecked(False)
@@ -5511,6 +5520,45 @@ class MainWindow(QMainWindow):
         shell_lay = QHBoxLayout(shell)
         shell_lay.setContentsMargins(10, 2, 4, 2)
         shell_lay.setSpacing(2)
+
+        attach = QPushButton("📎")
+        attach.setFixedSize(28, 28)
+        attach.setFont(QFont("Segoe UI Emoji", 11) if _OS == "Windows" else QFont("Arial", 11))
+        attach.setCursor(Qt.CursorShape.PointingHandCursor)
+        attach.setToolTip("Attach one or more files")
+        attach.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {C.PRI_DIM};
+                border: none; border-radius: 14px;
+            }}
+            QPushButton:hover {{
+                background: {C.PRI_GHO};
+                color: {C.PRI};
+            }}
+            QPushButton:pressed {{ background: {C.BORDER}; }}
+        """)
+        attach.clicked.connect(self._choose_attachments)
+        self._attachment_btn = attach
+        shell_lay.addWidget(attach)
+
+        self._attachment_summary = QPushButton()
+        self._attachment_summary.setFixedHeight(26)
+        self._attachment_summary.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._attachment_summary.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        self._attachment_summary.setToolTip("Attached files")
+        self._attachment_summary.setStyleSheet(f"""
+            QPushButton {{
+                background: {C.PRI_GHO}; color: {C.PRI};
+                border: 1px solid {C.BORDER_A}; border-radius: 12px;
+                padding: 0 7px;
+            }}
+            QPushButton:hover {{
+                background: {C.BORDER}; border-color: {C.BORDER_B};
+            }}
+        """)
+        self._attachment_summary.clicked.connect(self._show_attachment_menu)
+        self._attachment_summary.hide()
+        shell_lay.addWidget(self._attachment_summary)
 
         self._input = QLineEdit()
         self._input.setPlaceholderText("Type a command...")
@@ -5544,6 +5592,84 @@ class MainWindow(QMainWindow):
         shell_lay.addWidget(send)
         row.addWidget(shell)
         return row
+
+    def _choose_attachments(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, f"Attach files to {self._assistant_name}",
+            str(Path.home()),
+            "All files (*.*);;"
+            "Images (*.jpg *.jpeg *.png *.gif *.webp *.bmp *.svg);;"
+            "Documents (*.pdf *.doc *.docx *.txt *.md *.ppt *.pptx);;"
+            "Data (*.csv *.xls *.xlsx *.json *.xml);;"
+            "Code (*.py *.js *.ts *.html *.css *.java *.cpp *.go);;"
+            "Audio (*.mp3 *.wav *.ogg *.m4a *.aac *.flac);;"
+            "Video (*.mp4 *.avi *.mov *.mkv *.wmv *.webm);;"
+            "Archives (*.zip *.rar *.tar *.gz *.7z)"
+        )
+        for path in paths:
+            self._on_file_selected(path)
+
+    def _refresh_attachment_controls(self):
+        files = [Path(path) for path in self._attachments]
+        if not files:
+            self._attachment_summary.hide()
+            self._attachment_summary.setToolTip("Attached files")
+            return
+        if len(files) == 1:
+            label = f"📎 {files[0].name}"
+        else:
+            label = f"📎 {len(files)} files"
+        # Keep the command rail compact while exposing the actual names in the
+        # tooltip and in the remove menu.
+        self._attachment_summary.setText(label[:24] + ("…" if len(label) > 24 else ""))
+        self._attachment_summary.setToolTip(
+            "\n".join(f"{i}. {path.name}" for i, path in enumerate(files, 1))
+        )
+        self._attachment_summary.show()
+
+    def _show_attachment_menu(self):
+        if not self._attachments:
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {C.DARK}; color: {C.TEXT};
+                border: 1px solid {C.BORDER_B};
+                padding: 4px;
+            }}
+            QMenu::item {{ padding: 5px 10px; }}
+            QMenu::item:selected {{ background: {C.PRI_GHO}; color: {C.WHITE}; }}
+        """)
+        for index, path in enumerate(self._attachments):
+            action = menu.addAction(f"Remove  {Path(path).name}")
+            action.triggered.connect(
+                lambda _checked=False, i=index: self._remove_attachment(i)
+            )
+        menu.addSeparator()
+        clear = menu.addAction("Remove all attachments")
+        clear.triggered.connect(self._clear_attachments)
+        menu.exec(self._attachment_summary.mapToGlobal(
+            self._attachment_summary.rect().bottomLeft()
+        ))
+
+    def _remove_attachment(self, index: int):
+        if 0 <= index < len(self._attachments):
+            removed = Path(self._attachments.pop(index))
+            self._refresh_attachment_controls()
+            self._log.append_log(f"FILE: {removed.name} removed from message")
+            if self._attachments:
+                self._current_file = self._attachments[0]
+            else:
+                self._current_file = None
+
+    def _clear_attachments(self):
+        if self._attachments:
+            self._log.append_log(
+                f"FILE: removed {len(self._attachments)} attachment(s) from message"
+            )
+        self._attachments.clear()
+        self._current_file = None
+        self._refresh_attachment_controls()
 
     def _build_content_panel(self) -> QWidget:
         """
@@ -6028,21 +6154,19 @@ class MainWindow(QMainWindow):
         return w
 
     def _on_file_selected(self, path: str):
-        self._current_file = path
+        if path not in self._attachments:
+            self._attachments.append(path)
+        self._current_file = self._attachments[0]
         p    = Path(path)
         cat  = _file_category(p)
         icon, _ = _FILE_ICONS.get(cat, _FILE_ICONS["unknown"])
         size = _fmt_size(p.stat().st_size)
-        self._file_hint.setText(f"{icon}  {p.name}  ·  {size}  ·  Tell {self._assistant_name} what to do with it")
-        self._log.append_log(f"FILE: {p.name} ({size}) loaded")
-        if self.on_text_command:
-            msg = (
-                f"[FILE_UPLOADED] path={path} | name={p.name} | "
-                f"type={p.suffix.lstrip('.')} | size={size} | "
-                f"Briefly tell the user you can see the file '{p.name}' "
-                f"({size}) has been uploaded and ask what they'd like to do with it."
+        self._refresh_attachment_controls()
+        if hasattr(self, "_file_hint"):
+            self._file_hint.setText(
+                f"{icon}  {p.name}  ·  {size}  ·  Attached to the next command"
             )
-            threading.Thread(target=self.on_text_command, args=(msg,), daemon=True).start()
+        self._log.append_log(f"FILE: {p.name} ({size}) loaded")
 
     def notify_phone_connected(self) -> None:
         if self._remote_overlay and self._remote_overlay.isVisible():
@@ -6722,9 +6846,35 @@ class MainWindow(QMainWindow):
 
     def _send(self):
         txt = self._input.text().strip()
-        if not txt: return
+        if not txt and not self._attachments:
+            return
+        if not txt:
+            txt = "Please review the attached file(s) and tell me what they contain."
         self._input.clear()
-        self._log.append_log(f"You: {txt}")
+        if self._attachments:
+            names = ", ".join(Path(path).name for path in self._attachments)
+            self._log.append_log(f"You: {txt}  [attached: {names}]")
+            attachment_block = json.dumps(
+                [
+                    {
+                        "path": path,
+                        "name": Path(path).name,
+                        "type": Path(path).suffix.lstrip("."),
+                    }
+                    for path in self._attachments
+                ],
+                ensure_ascii=False,
+            )
+            txt = (
+                "[ATTACHED_FILES]\n"
+                f"{attachment_block}\n"
+                "[/ATTACHED_FILES]\n\n"
+                f"{txt}\n\n"
+                "Use the file_processor tool for each attached file when answering "
+                "about its contents. Do not just acknowledge the file."
+            )
+        else:
+            self._log.append_log(f"You: {txt}")
         if self.on_text_command:
             threading.Thread(target=self.on_text_command, args=(txt,), daemon=True).start()
 
@@ -6797,7 +6947,11 @@ class JarvisUI:
 
     @property
     def current_file(self) -> str | None:
-        return self._win._drop_zone.current_file()
+        return self._win._attachments[0] if self._win._attachments else None
+
+    @property
+    def current_files(self) -> list[str]:
+        return list(self._win._attachments)
 
     @property
     def on_text_command(self):

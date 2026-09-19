@@ -1,0 +1,79 @@
+Restore the **file upload / attachment functionality** that previously existed in my AI Assistant.
+
+I used to be able to **upload files to the AI and have the AI receive/process them**, but after the bottom command panel and microphone/command controls were repositioned during the UI redesign, the file upload option disappeared.
+
+### IMPORTANT
+
+This is primarily a **functionality restoration**, not a redesign. Do NOT revert the current UI.
+
+### Restore
+
+Bring back the ability to:
+
+* Click a file/attachment button in the command area.
+* Open the native file picker.
+* Select one or multiple supported files.
+* Attach those files to the current AI conversation/request.
+* Pass the selected file(s) correctly to the AI processing pipeline exactly as the previous implementation did.
+* Show the selected/attached file(s) in the UI before sending when that behavior existed previously.
+* Allow the user to remove an attachment before sending.
+* Preserve the existing file handling, parsing, extraction, and AI-processing logic if it still exists somewhere in the code.
+
+### UI Placement
+
+Integrate the file attachment control back into the **current bottom command panel**.
+
+Do NOT move the microphone, interrupt button, command input, send button, or any other existing controls.
+
+The attachment button should feel like a native part of the current command bar and match the existing:
+
+* Dark / black / deep-blue theme
+* Typography
+* Icon style
+* Spacing
+* Hover states
+* Active states
+* Subtle futuristic/JARVIS aesthetic
+
+Keep it **compact**. Do not make the command bar significantly taller or introduce a large attachment panel.
+
+### MOST IMPORTANT — DO NOT BREAK ANYTHING
+
+Before implementing anything, inspect the existing codebase and determine whether the old file-upload functionality still exists but is no longer connected to the UI.
+
+If the previous upload/attachment implementation is still present:
+
+* Reconnect it rather than rewriting it.
+* Reuse the existing handlers, functions, file parsers, AI integration, and data flow.
+* Restore the original behavior as closely as possible.
+
+If the old implementation was actually deleted:
+
+* Reimplement the missing functionality while following the architecture already used by the application.
+* Make sure uploaded files actually reach the AI and are not merely selected visually.
+
+### Preserve Everything Else
+
+Do NOT change:
+
+* Central AI orb/core
+* Orb animations
+* Global speaking orb
+* Activity Log behavior
+* Activity Log positioning/animations
+* Current bottom command panel positioning
+* Microphone functionality
+* Interrupt functionality
+* Existing keyboard shortcuts
+* Project: Zero branding
+* Current dark black/deep-blue theme
+* Current layout
+* Any existing AI functionality
+
+**Only restore the missing file-upload capability and integrate its button cleanly into the existing command bar.**
+
+Finally, test the complete flow:
+
+**Click attachment → choose file → file appears as attached → send message → AI receives the file → AI can process/respond about the file.**
+
+Do not consider the task complete if the button exists visually but the actual file is not being passed to the AI.

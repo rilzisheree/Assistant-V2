@@ -1227,12 +1227,41 @@ class JarvisLive:
                 asyncio.create_task(_do_shutdown())
 
             elif self._action_registry.has(name):
-                # file_processor: fall back to the currently-uploaded file when none is given
-                if name == "file_processor" and not args.get("file_path") and self.ui.current_file:
-                    args["file_path"] = self.ui.current_file
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "response": None, "session_memory": None}
-                r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
+                # The redesigned command bar can keep several attachments. Keep
+                # the legacy single-file tool contract, but run it once per
+                # attached file when the model leaves file_path empty.
+                if name == "file_processor" and not args.get("file_path"):
+                    attached = list(getattr(self.ui, "current_files", []) or [])
+                    if not attached and self.ui.current_file:
+                        attached = [self.ui.current_file]
+                    if len(attached) > 1:
+                        results = []
+                        for file_path in attached:
+                            per_file_args = {**args, "file_path": file_path}
+                            file_result = await loop.run_in_executor(
+                                None,
+                                lambda a=per_file_args: self._action_registry.run(
+                                    name, a, _ctx
+                                ),
+                            )
+                            results.append(
+                                f"[{Path(file_path).name}]\n{file_result or 'Done.'}"
+                            )
+                        r = "\n\n".join(results)
+                    else:
+                        if attached:
+                            args["file_path"] = attached[0]
+                        r = await loop.run_in_executor(
+                            None,
+                            lambda: self._action_registry.run(name, args, _ctx),
+                        )
+                else:
+                    r = await loop.run_in_executor(
+                        None,
+                        lambda: self._action_registry.run(name, args, _ctx),
+                    )
                 result = r or "Done."
                 # web_search: mirror results to the on-screen content panel
                 if (name == "web_search" and r
