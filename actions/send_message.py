@@ -189,6 +189,54 @@ def _screen_verdict(prompt: str, allowed: tuple[str, ...]) -> str | None:
     return None
 
 
+def _active_window_dimensions() -> str:
+    """Return best-effort geometry for the active desktop window."""
+    try:
+        import pygetwindow
+
+        window = pygetwindow.getActiveWindow()
+        if window is not None:
+            return (
+                f"{int(window.width)}x{int(window.height)} "
+                f"at ({int(window.left)},{int(window.top)})"
+            )
+    except Exception:
+        pass
+    return "unavailable"
+
+
+def _find_messenger_call_button(diagnostic: bool = False) -> tuple[int, int] | None:
+    """Find the phone icon in the loaded Messenger conversation header."""
+    from actions.computer_control import _screen_find
+
+    screenshot = pyautogui.screenshot() if diagnostic else None
+    if diagnostic:
+        screen_width, screen_height = pyautogui.size()
+        screenshot_width, screenshot_height = screenshot.size
+        print("CALL BUTTON DETECTION")
+        print(f"Window: {_active_window_dimensions()}")
+        print(
+            f"Screen: {screen_width}x{screen_height}; "
+            f"Screenshot: {screenshot_width}x{screenshot_height}"
+        )
+
+    coords = _screen_find(
+        "the phone handset voice-call button in the Messenger conversation "
+        "header. It must be the audio/voice call control for the open DM. "
+        "Do not select the video camera button, search button, conversation "
+        "options button, back button, profile button, or any browser control."
+    )
+
+    if diagnostic:
+        print(
+            "Detected: "
+            + (f"({coords[0]}, {coords[1]})" if coords else "NOT_FOUND")
+        )
+        if not coords:
+            print("Messenger voice-call button could not be visually identified")
+    return coords
+
+
 def send_whatsapp_verified(receiver: str, message: str) -> dict:
     """Send through native WhatsApp and require visual confirmation."""
     _require_pyautogui()
@@ -361,6 +409,7 @@ def start_messenger_call_verified(
     receiver: str,
     max_duration_minutes: int = 5,
     conversation_url: str | None = None,
+    diagnostic: bool = False,
 ) -> dict:
     """Start a Messenger call only after verifying contact and connection."""
     _require_pyautogui()
@@ -380,28 +429,52 @@ def start_messenger_call_verified(
                 "detail": f"Exact Messenger contact was not verified ({contact_verdict or 'UNKNOWN'}).",
             }
 
-        from actions.computer_control import _click, _screen_find
+        from actions.computer_control import _click
 
-        coords = _screen_find(
-            "the audio or voice call button for this Messenger conversation"
-        )
+        coords = _find_messenger_call_button(diagnostic=diagnostic)
         if not coords:
-            return {"connected": False, "detail": "Messenger call control was not found."}
-        _click(x=coords[0], y=coords[1])
+            return {
+                "connected": False,
+                "state": "CALL_BUTTON_NOT_FOUND",
+                "detail": "Messenger voice-call button could not be visually identified.",
+            }
+        cursor_before = pyautogui.position()
+        if diagnostic:
+            print(f"Cursor before click: ({cursor_before[0]}, {cursor_before[1]})")
+            print(f"Clicking center of detected button: ({coords[0]}, {coords[1]})")
+        click_attempted = False
+        try:
+            _click(x=coords[0], y=coords[1])
+            click_attempted = True
+        finally:
+            if diagnostic:
+                print(f"Click attempted: {'yes' if click_attempted else 'no'}")
 
+        # Messenger can spend several seconds transitioning from the header
+        # button to its outgoing-call UI. Do not turn that normal transition
+        # into a false failure.
         deadline = time.monotonic() + 12.0
         last_verdict = None
+        saw_connecting = False
         while time.monotonic() < deadline:
             time.sleep(1.5)
             last_verdict = _screen_verdict(
-                f"Is the Messenger Web call with '{receiver}' clearly connected "
-                "and in progress? Reply CONNECTED only for a connected call, "
-                "NOT_CONNECTED for ringing/failed/ended, or UNKNOWN if unclear.",
-                ("CONNECTED", "NOT_CONNECTED", "UNKNOWN"),
+                f"Inspect the visible Messenger Web UI for the call with '{receiver}'. "
+                "Reply CONNECTED only when an active connected call is clearly "
+                "shown. Reply CONNECTING when the outgoing-call UI is visible "
+                "but it is still ringing, dialing, or connecting. Reply "
+                "NOT_CONNECTED only when the call clearly failed, was declined, "
+                "or ended. Reply UNKNOWN if the state cannot be determined.",
+                ("CONNECTED", "CONNECTING", "NOT_CONNECTED", "UNKNOWN"),
             )
+            if diagnostic:
+                print(f"Visual/state change detected afterward: {last_verdict or 'UNKNOWN'}")
+            if last_verdict == "CONNECTING":
+                saw_connecting = True
             if last_verdict == "CONNECTED":
                 return {
                     "connected": True,
+                    "state": "CALL_CONNECTED",
                     "detail": (
                         f"Messenger confirmed connected to {receiver}; intended "
                         f"maximum duration is {max(1, int(max_duration_minutes))} minutes."
@@ -410,12 +483,19 @@ def start_messenger_call_verified(
             if last_verdict == "NOT_CONNECTED":
                 return {
                     "connected": False,
+                    "state": "CALL_NOT_CONNECTED",
                     "detail": "Messenger call did not reach a connected state.",
                 }
+        final_state = (
+            "CALL_CONNECTING"
+            if saw_connecting
+            else "CALL_UNKNOWN"
+        )
         return {
             "connected": None,
+            "state": final_state,
             "detail": (
-                "Messenger call connection could not be verified "
+                f"{final_state}: Messenger call connection could not be verified "
                 f"(verdict: {last_verdict or 'UNKNOWN'})."
             ),
         }

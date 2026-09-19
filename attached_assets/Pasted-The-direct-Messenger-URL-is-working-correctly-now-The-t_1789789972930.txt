@@ -1,0 +1,159 @@
+The direct Messenger URL is working correctly now. The test successfully opens my dad's DM.
+
+The remaining failure is specifically the Messenger voice-call step:
+
+`Messenger call was not verified: messenger call did not reach a connected state`
+
+From observing the test, it appears the automation is failing to correctly locate/click the Messenger voice-call button (the 📞 icon). It appears to move the cursor far to the left instead of clicking the actual call button.
+
+Fix ONLY this Messenger call interaction.
+
+## IMPORTANT
+
+Do NOT go back to contact searching.
+
+The direct Messenger conversation URL is working and must remain unchanged.
+
+The flow should remain:
+
+WhatsApp
+→ wait for Baba response
+→ direct Messenger URL
+→ Messenger DM loaded
+→ locate 📞 call button
+→ click it
+→ verify call state
+→ Gemini voice
+
+## CALL BUTTON DETECTION
+
+After opening the direct Messenger URL and confirming the conversation is loaded:
+
+1. Capture the current Messenger window/screen.
+2. Inspect the actual visible UI.
+3. Locate the Messenger voice-call button (📞).
+4. Determine the actual center coordinates of that button.
+5. Move the cursor to that exact location.
+6. Click it.
+7. Verify that Messenger changed into its outgoing-call UI.
+
+Do NOT use a guessed fixed coordinate.
+
+Do NOT assume the call button is always at the same X/Y position.
+
+Do NOT use Ctrl+F.
+
+Do NOT search for the contact.
+
+Prefer the existing visual screen detection / `screen_find` / `screen_click` functionality already present in the project.
+
+If the existing screen recognition system can identify UI elements from screenshots, use it to identify:
+
+`the voice call / phone button in the Messenger conversation header`
+
+The target should specifically be the phone/voice-call icon, NOT:
+
+* video call
+* search
+* conversation options
+* back button
+* profile button
+* browser controls
+
+## VERY IMPORTANT: DEBUG THE ACTUAL COORDINATES
+
+During the Test Escalation button only, add temporary diagnostic logging showing:
+
+* Messenger window dimensions
+* Screenshot dimensions
+* detected call-button coordinates
+* cursor coordinates immediately before clicking
+* whether the click was attempted
+* what visual/state change was detected afterward
+
+Example:
+
+CALL BUTTON DETECTION
+Detected: (1234, 87)
+Window: 1920x1080
+Clicking center of detected button
+Result: outgoing call UI detected
+
+If detection fails, log:
+
+`Messenger voice-call button could not be visually identified`
+
+Do NOT blindly click a random coordinate.
+
+## CALL VERIFICATION
+
+After clicking the phone button, don't immediately assume success.
+
+Messenger may go through states such as:
+
+```text
+CALL_BUTTON_VISIBLE
+↓
+CALL_INITIATED
+↓
+CALL_CONNECTING
+↓
+CALL_CONNECTED
+```
+
+The existing state machine should reflect that.
+
+Verify the call using visible Messenger UI changes.
+
+Look for actual outgoing-call/connected-call indicators.
+
+Only set:
+
+`CALL_CONNECTED`
+
+when there is evidence that Messenger actually connected the call.
+
+If the call button was successfully clicked but the call is still connecting, report:
+
+`CALL_CONNECTING`
+
+rather than falsely reporting failure immediately.
+
+Allow the existing call-connection verification timeout to work normally.
+
+## TEST ESCALATION
+
+The Settings → Reminders → Test Escalation button must use the exact same Messenger implementation.
+
+I need to be able to click Test Escalation and watch:
+
+✓ WhatsApp
+✓ Direct Messenger URL
+✓ Messenger DM loaded
+✓ 📞 button detected
+✓ 📞 button clicked
+✓ Call connecting
+✓ Call connected
+
+Do NOT add any artificial delays just to make the test appear successful.
+
+## DO NOT MODIFY
+
+Do not change:
+
+* WhatsApp
+* Baba response detection
+* Reminder scheduling
+* Daily reminders
+* Weekly reminders
+* Escalation timing
+* Direct Messenger URL
+* Cancellation
+* Test Escalation button
+* Activity Log architecture
+* Gemini architecture
+* Existing computer-control architecture
+
+Only fix Messenger voice-call button detection/clicking and the associated call-state verification.
+
+After the change, report exactly how the call button is being detected and clicked.

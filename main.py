@@ -770,6 +770,7 @@ class JarvisLive:
                 messenger,
                 int(config.get("max_call_duration_minutes", 5)),
                 messenger_url,
+                True,
             )
             detail = str(result.get("detail", result))
             if result.get("connected") is not True:
