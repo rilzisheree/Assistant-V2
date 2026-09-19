@@ -1530,11 +1530,6 @@ class HudCanvas(QWidget):
             _r = min(W * 0.46, _band_h / 2.0)
             self._paint_core_orb(p, cx, _band_t + _band_h / 2.0, _r, W, _band_h)
 
-        # A small copy of the same reactor core materialises above the HUD
-        # while the assistant is speaking. It stays calm while the main
-        # centrepiece remains the primary visual focus.
-        self._paint_speaking_orb(p, cx, W, H)
-
         # status text
         sy = _sy_status
         if self.muted:
@@ -2639,6 +2634,123 @@ class _HudOverlay(QWidget):
         if p is not None:
             p.update(self.geometry())
         super().closeEvent(e)
+
+
+class SpeakingOrbOverlay(QWidget):
+    """Global, mouse-through copy of the HUD's speaking orb.
+
+    The orb is deliberately a separate top-level tool window.  Keeping the
+    source HudCanvas lets the overlay use the exact same renderer, palette, and
+    live audio state as the main interface without duplicating any visual
+    logic.  It has no parent on purpose: a child widget would be clipped to
+    Project Zero's window and would disappear behind other applications.
+    """
+
+    _SIZE = 104
+    _TOP_MARGIN = 10
+
+    def __init__(self, source: "HudCanvas", owner: "MainWindow"):
+        flags = (
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+        )
+        super().__init__(None, flags)
+        self._source = source
+        self._owner = owner
+        self._progress = 0.0
+        self._target = 0.0
+        self._scale = 0.82
+        self._scale_target = 0.82
+        self.setFixedSize(self._SIZE, self._SIZE)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setWindowOpacity(1.0)
+        self.hide()
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._step)
+
+    def _screen(self):
+        """Use the app window's display, with the primary screen as fallback."""
+        try:
+            screen = self._owner.screen()
+            if screen is not None:
+                return screen
+        except Exception:
+            pass
+        try:
+            return QApplication.primaryScreen()
+        except Exception:
+            return None
+
+    def reposition(self) -> None:
+        screen = self._screen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        self.move(
+            area.left() + (area.width() - self.width()) // 2,
+            area.top() + self._TOP_MARGIN,
+        )
+
+    def set_speaking(self, speaking: bool) -> None:
+        """Start or finish the overlay animation from the TTS state."""
+        self._target = 1.0 if speaking else 0.0
+        self._scale_target = 1.0 if speaking else 0.82
+        if speaking:
+            self.reposition()
+            self.show()
+            self.raise_()
+            self._timer.start()
+        elif not self.isVisible():
+            self._progress = 0.0
+            self.update()
+        elif not self._timer.isActive():
+            self._timer.start()
+
+    def _step(self) -> None:
+        # Ease the materialisation independently from the audio amplitude so
+        # quiet speech still keeps a stable, visible desktop presence.
+        self._progress += (self._target - self._progress) * 0.18
+        self._scale += (self._scale_target - self._scale) * 0.18
+        if self._target == 0.0 and self._progress < 0.005:
+            self._progress = 0.0
+            self._scale = 0.82
+            self.hide()
+            self._timer.stop()
+            return
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        if self._progress <= 0.005:
+            return
+        p = QPainter(self)
+        if not p.isActive():
+            return
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        eased = self._progress * self._progress * (3.0 - 2.0 * self._progress)
+        pulse = (
+            1.0 + 0.025 * math.sin(self._source._core_phase * 1.7)
+            if self._source.speaking else 1.0
+        )
+        scale = self._scale * pulse
+        p.translate(self.width() / 2.0, self.height() / 2.0)
+        p.scale(scale, scale)
+        p.setOpacity(eased)
+        # This is the same renderer and mini mode used by the in-HUD copy.
+        self._source._paint_core_orb(
+            p, 0.0, 0.0, 34.0, self.width(), self.height(), mini=True
+        )
+        p.end()
+
+    def closeEvent(self, event):
+        self._timer.stop()
+        super().closeEvent(event)
 
 
 class ConfirmBanner(_HudOverlay):
@@ -3769,6 +3881,9 @@ class MainWindow(QMainWindow):
         # Center column: HUD + resizable content panel via QSplitter
         self.hud = HudCanvas(face_path, _display)
         self.hud.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # This is a real desktop overlay, not a child of the HUD.  It remains
+        # visible when this window is behind another application.
+        self._speaking_orb_overlay = SpeakingOrbOverlay(self.hud, self)
         self._content_panel = self._build_content_panel()
         self._quiz_panel = self._build_quiz_panel()
 
@@ -4376,6 +4491,17 @@ class MainWindow(QMainWindow):
         if hasattr(self, '_quick_drawer') and self._quick_drawer.isVisible():
             self._position_quick_drawer()
         self._position_context_overlays()
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if hasattr(self, "_speaking_orb_overlay"):
+            self._speaking_orb_overlay.reposition()
+
+    def closeEvent(self, event):
+        if hasattr(self, "_speaking_orb_overlay"):
+            self._speaking_orb_overlay.close()
+        super().closeEvent(event)
+
     def _build_context_overlays(self):
         """Build compact, on-demand views for information formerly in rails."""
         cw = self.centralWidget()
@@ -6646,6 +6772,7 @@ class MainWindow(QMainWindow):
     def _apply_state(self, state: str):
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
+        self._speaking_orb_overlay.set_speaking(state == "SPEAKING")
 
     def _check_config(self) -> bool:
         if not API_FILE.exists(): return False
