@@ -426,9 +426,10 @@ def mark_call_result(
 ) -> bool:
     """Finish the escalation only after a verified call connection.
 
-    This project has no Messenger-to-Gemini audio bridge. A connected call is
-    therefore recorded as partially failed instead of starting or claiming a
-    Gemini voice session.
+    A connected call is only recorded as fully connected when the Windows
+    Messenger-to-Gemini audio bridge was opened successfully. Otherwise the
+    call remains a partial failure so the assistant never claims a voice
+    conversation that it could not actually route.
     """
     with _LOCK:
         records = _read()

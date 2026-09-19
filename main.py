@@ -94,6 +94,11 @@ from core.viseme               import VisemeStream
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
+from core.messenger_audio_bridge import (
+    MessengerAudioBridge,
+    MessengerAudioBridgeError,
+    diagnose_local_audio,
+)
 from core.reminder_escalation import (
     acknowledge as acknowledge_reminder,
     cancel as cancel_reminder_escalation,
@@ -560,6 +565,8 @@ class JarvisLive:
         self._is_speaking         = False
         self._speaking_lock       = threading.Lock()
         self._phone_active        = False   # True while phone mic is streaming; pauses PC mic
+        self._messenger_audio_bridge = None  # attached only after verified Messenger connection
+        self._messenger_bridge_expiry = None
         self._pending_vision       = None    # (img_bytes, mime_type, question, angle) to inject after tool response
         self._vision_cam_active    = False   # True if camera was opened for vision → auto-close after response
         self._vision_close_pending = False   # True after vision injected; next turn_complete closes camera
@@ -778,9 +785,29 @@ class JarvisLive:
                 self._test_progress("FAILED", f"Messenger call was not verified: {detail}")
                 return
             self._test_progress("Call verified", detail)
+            try:
+                bridge_status = await asyncio.to_thread(
+                    self._start_messenger_audio_bridge
+                )
+                self._messenger_bridge_expiry = asyncio.create_task(
+                    self._expire_messenger_audio_bridge(
+                        int(config.get("max_call_duration_minutes", 5))
+                    ),
+                    name="messenger-audio-bridge-expiry",
+                )
+                self._test_progress(
+                    "Audio bridge active",
+                    "Gemini voice is streaming through VB-CABLE and WASAPI loopback "
+                    f"({bridge_status['capture_rate']} Hz in / "
+                    f"{bridge_status['output_rate']} Hz out).",
+                )
+            except Exception as exc:
+                self._stop_messenger_audio_bridge("bridge initialization failed")
+                self._test_progress("FAILED", f"Call connected but audio bridge failed: {exc}")
+                return
             self._test_progress(
                 "COMPLETE",
-                "Messenger/Gemini audio bridge is unavailable; no Gemini voice session was claimed.",
+                "Messenger/Gemini bidirectional audio bridge is active.",
             )
         except Exception as exc:
             self._test_progress("FAILED", str(exc))
@@ -993,10 +1020,67 @@ class JarvisLive:
 
     def shutdown(self) -> None:
         """Stop optional background integrations when the Qt app closes."""
+        self._stop_messenger_audio_bridge("assistant shutdown")
         try:
             self._plugin_registry.stop_lifecycles()
         except Exception as exc:
             print(f"[Plugins] Shutdown cleanup failed: {exc}")
+
+    def _stop_messenger_audio_bridge(self, reason: str = "") -> None:
+        bridge = self._messenger_audio_bridge
+        self._messenger_audio_bridge = None
+        expiry = self._messenger_bridge_expiry
+        self._messenger_bridge_expiry = None
+        if expiry and not expiry.done():
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is self._loop:
+                expiry.cancel()
+            elif self._loop is not None and self._loop.is_running():
+                self._loop.call_soon_threadsafe(expiry.cancel)
+            else:
+                expiry.cancel()
+        if bridge is not None:
+            try:
+                bridge.stop()
+            except Exception as exc:
+                print(f"[AudioBridge] Stop failed: {exc}")
+            self.ui.write_log(
+                "SYS: Messenger/Gemini audio bridge stopped"
+                + (f" ({reason})." if reason else ".")
+            )
+
+    def _start_messenger_audio_bridge(self) -> dict:
+        """Attach VB-CABLE/WASAPI to the existing Live session after call connect."""
+        self._stop_messenger_audio_bridge("replacing previous bridge")
+        if self._loop is None or self.out_queue is None:
+            raise MessengerAudioBridgeError(
+                "Gemini Live audio queues are not ready."
+            )
+        bridge = MessengerAudioBridge(
+            loop=self._loop,
+            input_queue=self.out_queue,
+            # This is the configured Windows playback endpoint. The bridge
+            # resolves its current WASAPI device by name, never by saved index.
+            messenger_playback_device=get_output_device(),
+            logger=lambda message: print(f"[AudioBridge] {message}", flush=True),
+        )
+        status = bridge.start()
+        self._messenger_audio_bridge = bridge
+        self.ui.write_log(
+            "SYS: Messenger connected — Gemini audio bridge active "
+            f"(input {status['capture_rate']} Hz, output {status['output_rate']} Hz)."
+        )
+        return status
+
+    async def _expire_messenger_audio_bridge(self, minutes: int) -> None:
+        try:
+            await asyncio.sleep(max(1, int(minutes)) * 60)
+            self._stop_messenger_audio_bridge("configured call duration reached")
+        except asyncio.CancelledError:
+            pass
 
     def request_reconnect(self, keep_context: bool = True, reason: str = ""):
         """Thread-safe: ask the run loop to tear down and rebuild the Live
@@ -1618,7 +1702,11 @@ class JarvisLive:
             if self._ptt_enabled and not self._ptt_held:
                 return
 
-            if not self.ui.muted and not self._phone_active:
+            if (
+                not self.ui.muted
+                and not self._phone_active
+                and self._messenger_audio_bridge is None
+            ):
                 data = indata.tobytes()
                 loop.call_soon_threadsafe(
                     self.out_queue.put_nowait,
@@ -2010,7 +2098,17 @@ class JarvisLive:
                     pass
 
                 try:
-                    await asyncio.to_thread(stream.write, bytes(batch))
+                    bridge = self._messenger_audio_bridge
+                    if bridge is not None and bridge.active:
+                        # The existing Gemini Live receive/playback path stays
+                        # intact; only its destination changes after Messenger
+                        # has confirmed the call is connected.
+                        await asyncio.to_thread(
+                            bridge.write_gemini_audio,
+                            bytes(batch),
+                        )
+                    else:
+                        await asyncio.to_thread(stream.write, bytes(batch))
                 except (RuntimeError, asyncio.CancelledError):
                     break   # executor shutting down — exit cleanly
         except Exception as e:
@@ -2382,6 +2480,32 @@ class JarvisLive:
                             self.ui.write_log(f"SYS: Messenger escalation — {result}")
                             continue
 
+                        # Exercise the local audio path before the irreversible
+                        # browser click. This opens no Messenger window and
+                        # writes silence only.
+                        diagnostic = await asyncio.to_thread(
+                            diagnose_local_audio,
+                            messenger_playback_device=get_output_device(),
+                        )
+                        if diagnostic.get("ok") is not True:
+                            result = (
+                                "Messenger call was not started because the local "
+                                f"audio diagnostic failed: {diagnostic.get('detail', diagnostic)}"
+                            )
+                            await asyncio.to_thread(
+                                mark_escalation_call_result,
+                                reminder_id,
+                                result,
+                                False,
+                                False,
+                            )
+                            self.ui.write_log(f"SYS: Messenger escalation — {result}")
+                            continue
+                        self.ui.write_log(
+                            "SYS: Local Messenger audio diagnostic passed; "
+                            "starting verified call."
+                        )
+
                         from actions.send_message import check_whatsapp_response
 
                         contact = str(
@@ -2432,16 +2556,37 @@ class JarvisLive:
                         )
                         result = str(result_data.get("detail", result_data))
                         connected = result_data.get("connected")
+                        bridge_supported = False
+                        if connected is True:
+                            try:
+                                bridge_status = await asyncio.to_thread(
+                                    self._start_messenger_audio_bridge
+                                )
+                                bridge_supported = True
+                                self._messenger_bridge_expiry = asyncio.create_task(
+                                    self._expire_messenger_audio_bridge(
+                                        int(config.get("max_call_duration_minutes", 5))
+                                    ),
+                                    name="messenger-audio-bridge-expiry",
+                                )
+                                result += (
+                                    " Bidirectional Gemini audio bridge active "
+                                    f"({bridge_status['capture_rate']} Hz loopback in / "
+                                    f"{bridge_status['output_rate']} Hz cable out)."
+                                )
+                            except Exception as exc:
+                                self._stop_messenger_audio_bridge(
+                                    "bridge initialization failed"
+                                )
+                                result += f" Audio bridge failed: {exc}"
                         await asyncio.to_thread(
                             mark_escalation_call_result,
                             reminder_id,
                             result,
                             connected,
-                            False,
+                            bridge_supported,
                         )
                         self.ui.write_log(f"SYS: Messenger escalation — {result}")
-                        # There is no Messenger/Gemini audio bridge. Do not start
-                        # or claim a Gemini voice session from a browser call.
                         continue
 
                     if kind == "call_recovery":
@@ -2454,12 +2599,35 @@ class JarvisLive:
                         )
                         result = str(result_data.get("detail", result_data))
                         connected = result_data.get("connected")
+                        bridge_supported = False
+                        if connected is True:
+                            try:
+                                bridge_status = await asyncio.to_thread(
+                                    self._start_messenger_audio_bridge
+                                )
+                                bridge_supported = True
+                                self._messenger_bridge_expiry = asyncio.create_task(
+                                    self._expire_messenger_audio_bridge(
+                                        int(config.get("max_call_duration_minutes", 5))
+                                    ),
+                                    name="messenger-audio-bridge-expiry",
+                                )
+                                result += (
+                                    " Bidirectional Gemini audio bridge active "
+                                    f"({bridge_status['capture_rate']} Hz loopback in / "
+                                    f"{bridge_status['output_rate']} Hz cable out)."
+                                )
+                            except Exception as exc:
+                                self._stop_messenger_audio_bridge(
+                                    "recovery bridge initialization failed"
+                                )
+                                result += f" Audio bridge failed: {exc}"
                         await asyncio.to_thread(
                             mark_escalation_call_result,
                             reminder_id,
                             result,
                             connected,
-                            False,
+                            bridge_supported,
                         )
                         self.ui.write_log(f"SYS: Messenger escalation — {result}")
             except Exception as e:
@@ -2817,6 +2985,7 @@ class JarvisLive:
                 else:
                     self._conn_backoff = 3
             finally:
+                self._stop_messenger_audio_bridge("Gemini session ended")
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)
                 if len(self._session_log) >= 3:

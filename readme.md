@@ -58,9 +58,37 @@ The escalation flow is:
 
 The WhatsApp and Messenger steps use the logged-in desktop applications or
 browser session and therefore require an interactive desktop with PyAutoGUI
-permissions. Reply detection is visual and best-effort. The current project
-does not route Messenger audio into Gemini, so the final step is a call attempt
-and does not claim that a Gemini conversation occurred.
+permissions. Reply detection is visual and best-effort. On Windows, the
+Messenger call can optionally continue into the audio bridge described below;
+without a verified bridge, the app reports only the call result.
+
+### Messenger ↔ Gemini voice bridge (Windows)
+
+When a verified Messenger call is connected, MARK LIV can attach the existing
+Gemini Live session to Windows audio without creating a second voice system:
+
+* Gemini output is sent to `CABLE Input (VB-Audio Virtual Cable)`, which should
+  be selected as Messenger's microphone through its matching `CABLE Output`
+  endpoint.
+* Messenger playback is captured through WASAPI loopback and streamed back to
+  the existing Gemini session as mono 16 kHz PCM.
+* The bridge resolves devices by their current names, not saved numeric indexes,
+  and converts the existing Gemini 24 kHz output explicitly when the cable
+  uses another supported rate.
+
+Before a real escalation call, the app runs a local diagnostic that writes
+silence only and checks CABLE Input, CABLE Output, and the intended WASAPI
+loopback endpoint. It does not open Messenger or contact anyone. You can run
+the same check manually on Windows with:
+
+```bash
+python -m core.messenger_audio_bridge
+```
+
+The bridge is Windows-only and requires the interactive desktop, VB-CABLE, and
+the project dependencies installed on that Windows machine. A connected call
+is not reported as a Gemini voice conversation unless both audio streams are
+actually running.
 
 ---
 
