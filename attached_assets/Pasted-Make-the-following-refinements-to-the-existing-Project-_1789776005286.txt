@@ -1,0 +1,144 @@
+Make the following refinements to the existing Project Zero AI Assistant interface.
+
+IMPORTANT:
+
+* Do NOT change or break any existing functionality.
+* Do NOT modify backend logic, APIs, commands, voice recognition, TTS, or assistant behavior.
+* Preserve the current main orb and existing visual design.
+* Only modify the visual behavior and add the small speaking indicator described below.
+
+### 1. SMALL SPEAKING ORB AT TOP CENTER
+
+Add a small orb at the **top-center of the application/window**.
+
+This orb must use the **exact same AI orb design already used in the main interface**.
+
+Do NOT create a different orb design.
+
+It should reuse the same:
+
+* Core shape
+* Internal elements
+* Lighting
+* Materials
+* Colors
+* Blue illumination
+* Visual effects
+* Overall appearance
+
+Simply create a smaller version of the existing orb.
+
+### 2. WHEN SHOULD THE TOP ORB APPEAR?
+
+The small top orb should appear **when the AI is speaking/responding through voice**.
+
+When the AI starts speaking:
+
+→ Small orb smoothly materializes at the top-center.
+
+While the AI is speaking:
+
+→ Orb remains visible and subtly animated.
+
+When the AI finishes speaking:
+
+→ Orb smoothly fades away.
+
+Do NOT instantly spawn or instantly remove it.
+
+Use a very short, smooth fade/scale animation.
+
+### 3. SPEAKING ANIMATION
+
+The top orb should subtly react while the AI is speaking.
+
+Use extremely restrained movement such as:
+
+* Gentle pulsing
+* Very subtle internal energy movement
+* Slight brightness fluctuation
+* Small changes in the core's illumination
+
+The animation should communicate:
+
+**AI IS SPEAKING**
+
+without becoming distracting.
+
+Do NOT make the orb rapidly spin.
+
+### 4. FIX THE MAIN ORB SPINNING TOO FAST
+
+There is currently a problem where, when I talk to the AI, the elements inside the main orb suddenly start spinning extremely fast.
+
+This is distracting and should be fixed.
+
+The main orb should NEVER suddenly accelerate into extremely fast rotation when voice input or AI processing begins.
+
+Instead:
+
+* Keep the existing internal rotation extremely slow and smooth.
+* Reduce the maximum rotation speed significantly.
+* Use smooth acceleration/deceleration if the speed changes at all.
+* Never abruptly jump from idle speed to high speed.
+* Never create a "crazy spinning" effect.
+
+The internal elements should feel like a sophisticated continuously operating AI system, not a rapidly spinning loading animation.
+
+### 5. VOICE INPUT VS AI SPEAKING
+
+Do not confuse these states.
+
+When **I am speaking to the AI**:
+
+* Main orb can have a subtle listening/processing response.
+* Do NOT dramatically increase rotation speed.
+
+When **the AI is speaking back**:
+
+* Show the small orb at the top-center.
+* Main orb remains calm.
+* Small top orb provides the speaking feedback.
+
+### 6. MOTION PHILOSOPHY
+
+The interface should feel alive without constantly moving aggressively.
+
+Use:
+
+**Slow**
+**Smooth**
+**Controlled**
+**Subtle**
+
+motion.
+
+Avoid:
+
+* Rapid spinning
+* Fast rotations
+* Excessive pulsing
+* Flashing
+* Jitter
+* Sudden acceleration
+* Distracting animations
+
+The main orb should be something I can comfortably look at for hours.
+
+### FINAL BEHAVIOR
+
+IDLE:
+→ Main orb is calm with extremely subtle internal motion.
+
+USER SPEAKS:
+→ Main orb subtly reacts, but remains calm.
+
+AI RESPONDS:
+→ Small identical orb smoothly appears at top-center.
+→ Small orb subtly pulses while AI speaks.
+→ Main orb remains calm.
+
+AI FINISHES:
+→ Small orb smoothly fades away.
+
+The overall result should feel like a polished futuristic AI system rather than an animated loading screen.

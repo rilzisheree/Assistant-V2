@@ -525,6 +525,12 @@ class HudCanvas(QWidget):
         except Exception:
             self.hud_style = "face"
         self._core_phase = 0.0
+        # Keep the reactor's motion in a deliberately narrow, low-speed range.
+        # The value is eased toward its state target in _step() so a state
+        # change can never make the internal elements jump into a spin.
+        self._core_rotation = 0.46
+        # Opacity/scale progress for the small top-center speaking orb.
+        self._speaking_orb = 0.0
 
         self._tick       = 0
         self._scale      = 1.0
@@ -721,6 +727,21 @@ class HudCanvas(QWidget):
         # a rate that changes with state jumps the rings the instant JARVIS
         # starts talking. Same lesson the head's sway taught.
         self._core_phase += min(0.10, max(0.0, dt))
+        rotation_target = 0.46
+        if self.state in ("THINKING", "PROCESSING"):
+            rotation_target = 0.58
+        elif self.speaking:
+            rotation_target = 0.50
+        self._core_rotation += (
+            rotation_target - self._core_rotation
+        ) * min(1.0, max(0.0, dt) * 3.0)
+
+        # A short ease-in/ease-out gives the speaking indicator a materialised
+        # feel instead of making it pop in and out with the audio state.
+        orb_target = 1.0 if self.speaking else 0.0
+        self._speaking_orb += (
+            orb_target - self._speaking_orb
+        ) * min(1.0, max(0.0, dt) * 11.0)
 
         if self._avatar is not None and self.hud_style == "face":
             self._avatar.step(dt, amp, speaking=self.speaking,
@@ -770,7 +791,7 @@ class HudCanvas(QWidget):
         # so a sleeping HUD stops pinning a CPU core. The visuals stay smooth
         # either way because the animation state keeps stepping at 60 Hz.
         self._paint_tick = (self._paint_tick + 1) % 6
-        active = (self.speaking or amp > 0.02
+        active = (self.speaking or self._speaking_orb > 0.01 or amp > 0.02
                   or self.state in ("THINKING", "PROCESSING"))
         if _blinked or (self._paint_tick % 2 == 0 if active
                         else self._paint_tick % 3 == 0):
@@ -811,7 +832,7 @@ class HudCanvas(QWidget):
         return qcol(C.PRI), qcol(C.PRI_DIM)
 
     def _paint_core_orb(self, p: QPainter, cx: float, cy: float, r: float,
-                        W: float = 0.0, H: float = 0.0):
+                        W: float = 0.0, H: float = 0.0, mini: bool = False):
         """Paint the calm volumetric intelligence core.
 
         This deliberately avoids the old reactor language: no radar circles,
@@ -823,9 +844,12 @@ class HudCanvas(QWidget):
         t = self._core_phase
         amp = self._amp_disp
         state = self.state.upper()
-        motion = 0.34 + (0.28 if state in ("THINKING", "PROCESSING") else 0.0)
-        motion += amp * 0.36 + (0.18 if self.speaking else 0.0)
-        orb_r = min(r * 0.72, max(78.0, min(W, H) * 0.34))
+        # Internal motion is intentionally independent of microphone level and
+        # speaking state. Those states may brighten the orb, but never turn it
+        # into a loading spinner.
+        motion = 0.22 + (self._core_rotation - 0.46) * 0.22
+        orb_r = (r * 0.72 if mini
+                 else min(r * 0.72, max(78.0, min(W, H) * 0.34)))
         orb = QRectF(cx - orb_r, cy - orb_r, orb_r * 2, orb_r * 2)
 
         def mix(col: QColor, amount: float) -> QColor:
@@ -943,7 +967,7 @@ class HudCanvas(QWidget):
             rr_x = orb_r * (0.36 + (i % 4) * 0.075)
             rr_y = rr_x * (0.48 + (i % 3) * 0.08)
             box = QRectF(cx - rr_x, cy - rr_y, rr_x * 2, rr_y * 2)
-            start = int((seed * 83 + t * (2.5 if i % 2 else -1.4)) * 16)
+            start = int((seed * 83 + t * (0.22 if i % 2 else -0.16)) * 16)
             span = int((7 + (i % 5) * 4) * 16)
             arc_col = mix(acc if i % 5 == 0 else main, 0.42)
             arc_col.setAlpha(42 + (i % 4) * 8)
@@ -1056,6 +1080,12 @@ class HudCanvas(QWidget):
         p.setPen(QPen(shine, 2.2))
         p.drawPath(glint)
         p.restore()
+
+        # The small speaking indicator uses the same core volume and internal
+        # energy field, but omits the full-size telemetry/callout layer that
+        # would be unreadable at indicator scale.
+        if mini:
+            return
 
         # Live system telemetry is part of the core geometry, not a separate
         # dashboard. Each readout gets a different anchor and a tiny meter so
@@ -1354,11 +1384,10 @@ class HudCanvas(QWidget):
         p.setPen(QPen(blend(main, 0.18), 1))
         p.drawLines(minor)
 
-        # 6. Sweeping arcs. Long spans, not dashes — the original's grandeur
-        #    came from a few big strokes. Speed is the state: idle drifts,
-        #    thinking hurries, speaking runs.
-        rate = 1.0 + (1.9 if self.state in ("THINKING", "PROCESSING") else 0.0) \
-                   + (1.2 if self.speaking else 0.0)
+        # 6. Sweeping arcs. Long spans, not dashes. The eased rate is kept
+        # deliberately low; listening and speaking can change brightness and
+        # waveform energy without causing a sudden rotation jump.
+        rate = self._core_rotation
         for k, (rr, span, count, dirn, col, a, wid) in enumerate((
                 (0.955, 118, 2, +1, acc,  0.95, 4.5),
                 (0.845, 82,  3, -1, main, 0.64, 2.2),
@@ -1409,6 +1438,32 @@ class HudCanvas(QWidget):
             p.setPen(QPen(blend(qcol(C.WHITE), 0.6 + 0.4 * min(1.0, amp * 2)), 1))
             p.drawText(QRectF(cx - r, cy - fsz, r * 2, fsz * 2),
                        Qt.AlignmentFlag.AlignCenter, name)
+
+    def _paint_speaking_orb(self, p: QPainter, cx: float, W: float, H: float):
+        """Paint the restrained top-center indicator for JARVIS's own voice.
+
+        It deliberately calls the same core renderer as the main reactor. The
+        only difference is scale and the omission of full-size readouts, which
+        would not be legible in this small indicator.
+        """
+        progress = max(0.0, min(1.0, self._speaking_orb))
+        if progress <= 0.005:
+            return
+
+        eased = progress * progress * (3.0 - 2.0 * progress)
+        fw = min(W, H)
+        radius = max(18.0, min(34.0, fw * 0.045))
+        pulse = 1.0 + (0.025 * math.sin(self._core_phase * 1.7)
+                       if self.speaking else 0.0)
+        scale = (0.82 + 0.18 * eased) * pulse
+        orb_y = max(radius + 6.0, min(70.0, H * 0.10))
+
+        p.save()
+        p.translate(cx, orb_y)
+        p.scale(scale, scale)
+        p.setOpacity(eased)
+        self._paint_core_orb(p, 0.0, 0.0, radius, W, H, mini=True)
+        p.restore()
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -1474,6 +1529,11 @@ class HudCanvas(QWidget):
             _band_h = max(60.0, _sy_status - 12.0 - _band_t)
             _r = min(W * 0.46, _band_h / 2.0)
             self._paint_core_orb(p, cx, _band_t + _band_h / 2.0, _r, W, _band_h)
+
+        # A small copy of the same reactor core materialises above the HUD
+        # while the assistant is speaking. It stays calm while the main
+        # centrepiece remains the primary visual focus.
+        self._paint_speaking_orb(p, cx, W, H)
 
         # status text
         sy = _sy_status
