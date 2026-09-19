@@ -1,0 +1,530 @@
+I want you to build a new **Telegram Connect Plugin** for my existing AI Assistant.
+
+The goal is to let me communicate with and control my AI Assistant remotely through Telegram while I am away from my PC.
+
+IMPORTANT:
+
+* I already have an existing plugin/action system in the app.
+* Integrate Telegram into that existing architecture instead of creating a completely separate system.
+* Do NOT break any existing plugins, commands, UI, voice functionality, dashboard functionality, or AI behavior.
+* Keep the implementation modular so Telegram can be enabled/disabled independently.
+* This is primarily a connectivity/integration feature, NOT a UI redesign.
+
+## CORE CONCEPT
+
+The architecture should work like:
+
+Telegram
+↓
+Telegram Bot
+↓
+Telegram Connect Plugin
+↓
+Existing AI Assistant
+↓
+Existing command/action/plugin system
+↓
+Response
+↓
+Telegram
+
+I should be able to message my bot from my phone and have my existing AI Assistant process the request exactly like it would process a normal user request.
+
+For example:
+
+Me:
+"What's the weather?"
+
+Telegram Bot:
+"Checking the weather..."
+
+AI Assistant:
+uses its existing weather functionality
+
+Telegram Bot:
+"Currently 28°C..."
+
+Another example:
+
+Me:
+"Open Discord on my PC"
+
+Telegram Bot:
+"Opening Discord."
+
+The existing computer-control functionality should perform the action on the PC.
+
+## 1. TELEGRAM BOT CONNECTION
+
+Use the official Telegram Bot API.
+
+The plugin should support configuration through environment variables or the app's existing configuration system.
+
+Use something like:
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_USER_IDS=
+
+Do NOT hardcode the bot token anywhere in the source code.
+
+The plugin should clearly report:
+
+[Telegram] Connecting...
+[Telegram] Connected.
+[Telegram] Bot username: @...
+[Telegram] Listening for messages...
+
+If the token is missing:
+
+[Telegram] Disabled: TELEGRAM_BOT_TOKEN is not configured.
+
+The AI Assistant should still start normally if Telegram is disabled or unavailable.
+
+## 2. SECURITY / AUTHORIZATION
+
+This is extremely important.
+
+Only explicitly authorized Telegram user IDs should be allowed to interact with the Assistant.
+
+Do NOT make the bot publicly usable by anyone who discovers the username.
+
+Support:
+
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+
+If an unauthorized user sends a message, silently ignore it or return a generic unauthorized message without exposing any internal information.
+
+Never allow arbitrary Telegram users to:
+
+* execute commands
+* control the PC
+* access files
+* read Assistant data
+* access the Remote Control dashboard
+* invoke plugins/actions
+
+Log unauthorized attempts locally:
+
+[Telegram] Unauthorized user attempted access: <telegram_user_id>
+
+Do not expose sensitive information in Telegram responses.
+
+## 3. MESSAGE → AI ASSISTANT
+
+When an authorized user sends a normal Telegram message, pass it into the existing AI Assistant processing pipeline.
+
+Do NOT create a second completely independent AI brain.
+
+The Telegram plugin should act as another input/output interface.
+
+Conceptually:
+
+process_user_message(
+message,
+source="telegram",
+user_id=...
+)
+
+Reuse the existing:
+
+* AI model
+* conversation handling
+* action/plugin system
+* tool execution
+* memory/context system
+* file processing
+* command handling
+
+as much as possible.
+
+If the existing architecture doesn't have a clean shared message-processing function, refactor carefully so Telegram can call the same underlying logic without changing the behavior of existing voice/desktop input.
+
+## 4. TELEGRAM CONVERSATION CONTEXT
+
+Maintain a Telegram conversation session.
+
+Telegram messages from the authorized user should remain contextually connected where appropriate.
+
+For example:
+
+User:
+"What's the weather in Riyadh?"
+
+Assistant:
+"32°C."
+
+User:
+"What about tomorrow?"
+
+The Assistant should understand that "tomorrow" refers to the previous weather request.
+
+Do not mix Telegram conversation history with unrelated users.
+
+If the existing AI system already has conversation/session management, reuse it.
+
+## 5. LONG AI RESPONSES
+
+Telegram has message-length limitations.
+
+If the Assistant produces a response that is too long for a single Telegram message, automatically split it into multiple messages cleanly.
+
+Do not arbitrarily truncate the response.
+
+Preserve:
+
+* Markdown/code formatting where possible
+* paragraphs
+* lists
+* important information
+
+## 6. ACTIONS / COMPUTER CONTROL
+
+Telegram requests should be able to invoke the EXISTING action/plugin system.
+
+For example:
+
+"Open Chrome"
+
+"Play this YouTube video"
+
+"Take a screenshot"
+
+"What's running on my PC?"
+
+"Create a file on my desktop"
+
+etc.
+
+The Telegram plugin should NOT implement duplicate versions of these capabilities.
+
+Instead:
+
+Telegram → Assistant → existing action/plugin → result → Telegram
+
+The existing permission/safety mechanisms must still apply.
+
+## 7. REMOTE PC STATUS
+
+Add useful commands such as:
+
+/status
+
+Response could show:
+
+JARVIS
+● Online
+
+PC:
+Online
+
+Telegram:
+Connected
+
+AI:
+Ready
+
+Plugins:
+16 active
+
+Uptime:
+...
+
+Do not expose sensitive system information.
+
+Also support:
+
+/ping
+
+→ "JARVIS is online."
+
+## 8. BASIC TELEGRAM COMMANDS
+
+Implement sensible bot commands:
+
+/start
+/help
+/status
+/ping
+/clear
+
+/start:
+Explain that the user is connected to their AI Assistant.
+
+Example:
+
+"JARVIS Remote Control
+Connected successfully.
+
+Send me a message and I'll process it through your AI Assistant."
+
+/help:
+Show available functionality.
+
+/status:
+Show whether the Assistant is online.
+
+/ping:
+Simple connectivity test.
+
+/clear:
+Clear/reset the Telegram conversation context if supported by the existing architecture.
+
+These should NOT interfere with the existing AI command system.
+
+## 9. TYPING INDICATOR
+
+When the Assistant is processing a Telegram request, show Telegram's typing indicator.
+
+For example:
+
+User:
+"Analyze this file."
+
+Bot:
+typing...
+
+Then send the response.
+
+This makes the interaction feel like a real remote Assistant rather than a delayed webhook.
+
+## 10. ERROR HANDLING
+
+Telegram must NEVER crash the main AI Assistant.
+
+If Telegram disconnects:
+
+[Telegram] Connection lost.
+[Telegram] Reconnecting...
+
+If Telegram encounters an API error:
+
+[Telegram] API error: ...
+
+Retry using sensible backoff.
+
+If Telegram completely fails, the rest of the Assistant must continue operating normally.
+
+## 11. STARTUP / SHUTDOWN
+
+Telegram should start as part of the normal Assistant lifecycle.
+
+Startup:
+
+[JARVIS] Connecting...
+[Telegram] Starting Telegram Connect...
+[Telegram] Connected.
+[JARVIS] Connected.
+
+Shutdown should cleanly stop the Telegram polling/client task.
+
+Do not leave background tasks running after the Assistant exits.
+
+## 12. POLLING VS WEBHOOK
+
+Because my AI Assistant runs on my own PC and I want this to work while I am away from home, prefer a solution that does NOT require me to expose my PC's port directly to the public internet.
+
+Use Telegram long polling unless there is a strong architectural reason to use webhooks.
+
+This means:
+
+Telegram servers
+↓
+Internet
+↓
+My PC's outbound connection
+↓
+Telegram Bot API
+↓
+My Assistant
+
+I should NOT need port forwarding just to receive Telegram messages.
+
+## 13. FILES / PHOTOS / DOCUMENTS
+
+If feasible within the existing file-processing architecture, support Telegram attachments.
+
+At minimum support:
+
+* photos
+* documents
+* text files
+
+When I send a file to Telegram:
+
+Telegram
+↓
+Download file
+↓
+Existing file-processing system
+↓
+AI Assistant
+↓
+Response
+
+Do NOT create a second file-processing system.
+
+If the existing file processor can already handle the file type, pass it through that system.
+
+For example:
+
+User sends a PDF:
+"Summarize this."
+
+The Assistant should download the PDF and use the existing file-processing functionality.
+
+## 14. SCREENSHOTS
+
+If the existing computer-control system supports screenshots, allow:
+
+"Send me a screenshot."
+
+The plugin should execute the existing screenshot capability and send the resulting image back through Telegram.
+
+Do not implement a duplicate screenshot system if one already exists.
+
+## 15. MEDIA / VOICE
+
+Design the plugin architecture so voice messages can be supported later.
+
+Do NOT make voice messages a requirement for the first implementation.
+
+If the existing Assistant already has speech-to-text functionality that can easily process Telegram voice messages, it can be integrated, but don't destabilize the existing audio system just to add this.
+
+## 16. REMOTE CONTROL SECURITY
+
+Treat Telegram as a REMOTE CONTROL INTERFACE.
+
+That means the plugin must be security-conscious.
+
+Never send to Telegram:
+
+* API keys
+* bot tokens
+* passwords
+* environment variables
+* private credentials
+* raw exception traces containing secrets
+* sensitive filesystem information
+
+Be careful with commands that can expose sensitive data.
+
+Use the Telegram user ID allowlist as the primary authentication mechanism.
+
+## 17. PLUGIN ARCHITECTURE
+
+Create the Telegram integration as a clean standalone plugin/action.
+
+Something conceptually like:
+
+plugins/
+telegram_connect/
+**init**.py
+plugin.py
+config.py
+telegram_client.py
+
+Adapt this to my EXISTING project structure rather than blindly creating this exact structure.
+
+The plugin should expose a clear lifecycle:
+
+start()
+stop()
+send_message()
+handle_message()
+
+and integrate with the existing plugin discovery system.
+
+The plugin should be discoverable exactly like my other plugins/actions.
+
+At startup I want something similar to:
+
+[Plugins] Plugin discovery complete: ...
+[Telegram] Telegram Connect plugin loaded.
+[Telegram] Connecting...
+[Telegram] Connected.
+
+## 18. DO NOT BREAK THE EXISTING SYSTEM
+
+Before modifying anything:
+
+1. Inspect the existing plugin architecture.
+2. Inspect how plugins/actions are discovered.
+3. Inspect how the AI processes user messages.
+4. Inspect how existing actions are invoked.
+5. Inspect the existing file-processing pipeline.
+6. Inspect existing configuration/environment variable handling.
+7. Inspect the existing startup/shutdown lifecycle.
+
+Then integrate Telegram into those systems.
+
+Do NOT replace existing architecture unless necessary.
+
+Do NOT rewrite unrelated files.
+
+Do NOT change the existing UI.
+
+Do NOT remove functionality.
+
+## 19. CONFIGURATION
+
+Provide a clear configuration example, preferably through the existing `.env` system:
+
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_ALLOWED_USER_IDS=your_telegram_user_id
+
+If multiple IDs are supported:
+
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+
+Make sure secrets are never committed to Git.
+
+If the project has an existing settings/config UI, integrate the Telegram settings there only if that is already how plugins are configured.
+
+## 20. LOGGING
+
+Use clean logs such as:
+
+[Telegram] Plugin loaded.
+[Telegram] Connecting...
+[Telegram] Connected as @MyBot
+[Telegram] Authorized user connected: 123456789
+[Telegram] Message received.
+[Telegram] Processing request...
+[Telegram] Action executed: weather_report
+[Telegram] Response sent.
+
+Avoid excessive logging of message contents because Telegram messages may contain private information.
+
+## 21. FINAL TEST
+
+After implementation, test:
+
+1. Assistant starts with Telegram disabled.
+2. Assistant starts with Telegram enabled.
+3. Invalid token does not crash Assistant.
+4. Unauthorized Telegram account cannot use the bot.
+5. Authorized account can send:
+   "Hello"
+6. Authorized account can ask:
+   "What's the weather?"
+7. Authorized account can invoke an existing action.
+8. /status works.
+9. /help works.
+10. /clear works.
+11. Long responses are handled correctly.
+12. Telegram temporarily disconnecting does not crash Assistant.
+13. Assistant can still work normally through voice while Telegram is connected.
+14. Assistant can still work normally through the existing Remote Control dashboard.
+15. Assistant shuts down cleanly.
+
+At the end, give me:
+
+* files created
+* files modified
+* environment variables required
+* exact steps to create/configure the Telegram bot
+* exact steps to find my Telegram user ID
+* exact command to start the Assistant
+* example Telegram commands/messages to test
+
+Do not just provide a theoretical implementation. Actually integrate it into the existing project architecture while preserving everything that already works.

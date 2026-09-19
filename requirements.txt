@@ -95,3 +95,4 @@ fastapi>=0.110,<1
 python-multipart>=0.0.9,<1
 sift-stack-py
 uvicorn[standard]>=0.27,<1
+requests

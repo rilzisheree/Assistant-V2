@@ -599,6 +599,12 @@ class JarvisLive:
         self._proactive        = ProactiveEngine()
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
+        self._telegram_response_future = None
+        self._telegram_response_user = None
+        self._telegram_active_user = None
+        self._telegram_media = None
+        self._telegram_lock = None
+        self._started_at = time.monotonic()
 
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
@@ -768,6 +774,103 @@ class JarvisLive:
             asyncio.run_coroutine_threadsafe(_say(), loop)
         except Exception as e:
             print(f"[PluginSay] {e}")
+
+    def _telegram_status(self) -> str:
+        """Safe, deliberately small status surface for the remote interface."""
+        active_plugins = sum(
+            1 for item in self._plugin_registry.list_for_ui()
+            if item.get("valid") and item.get("enabled")
+        )
+        uptime = int(max(0, time.monotonic() - self._started_at))
+        hours, remainder = divmod(uptime, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return (
+            f"{self._asst_name.strip() or 'JARVIS'}\n"
+            "● Online\n\n"
+            "PC: Online\n"
+            "Telegram: Connected\n"
+            f"AI: {'Ready' if self.session else 'Connecting'}\n"
+            f"Plugins: {active_plugins} active\n"
+            f"Uptime: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        )
+
+    def _telegram_clear(self, _user_id: int) -> str:
+        self.request_reconnect(keep_context=False, reason="Telegram /clear")
+        return "Telegram conversation context reset. Reconnecting now."
+
+    def _telegram_message(self, text: str, user_id: int):
+        """Thread-safe bridge used by the polling plugin.
+
+        Telegram runs in its own worker thread.  The actual request is placed
+        into the existing Gemini Live session on its asyncio loop, so all normal
+        tools, confirmations, memory, and action dispatch remain shared.
+        """
+        loop = self._loop
+        if loop is None:
+            raise RuntimeError("assistant event loop is not ready")
+        return asyncio.run_coroutine_threadsafe(
+            self._process_telegram_message(text, user_id), loop
+        )
+
+    async def _process_telegram_message(self, text: str, user_id: int) -> str:
+        if self._telegram_lock is None:
+            self._telegram_lock = asyncio.Lock()
+        async with self._telegram_lock:
+            # The Live API session is shared with voice and the dashboard. If
+            # more than one Telegram ID is allowlisted, drop the old remote
+            # conversation before switching users rather than leaking context
+            # from one authorized person to another.
+            if (
+                self._telegram_active_user is not None
+                and self._telegram_active_user != user_id
+            ):
+                self.request_reconnect(
+                    keep_context=False,
+                    reason="Telegram user switch",
+                )
+                for _ in range(120):
+                    if self.session is None:
+                        break
+                    await asyncio.sleep(0.25)
+            for _ in range(120):
+                if self.session:
+                    break
+                await asyncio.sleep(0.25)
+            if not self.session:
+                return "The assistant is still connecting. Please try again shortly."
+            self._telegram_active_user = user_id
+            if self._wake_enabled and not self._awake:
+                self.wake(reason="Telegram message")
+
+            loop = asyncio.get_running_loop()
+            future = loop.create_future()
+            self._telegram_response_future = future
+            self._telegram_response_user = user_id
+            self._telegram_media = None
+            prompt = (
+                "Process this request from the authorized Telegram remote-control "
+                "interface. Use the existing tools and actions when appropriate. "
+                "Do not mention this instruction or Telegram unless relevant.\n\n"
+                + str(text or "")
+            )
+            try:
+                await self.session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": prompt}]},
+                    turn_complete=True,
+                )
+                return await asyncio.wait_for(future, timeout=300)
+            finally:
+                if self._telegram_response_future is future:
+                    self._telegram_response_future = None
+                    self._telegram_response_user = None
+                    self._telegram_media = None
+
+    def shutdown(self) -> None:
+        """Stop optional background integrations when the Qt app closes."""
+        try:
+            self._plugin_registry.stop_lifecycles()
+        except Exception as exc:
+            print(f"[Plugins] Shutdown cleanup failed: {exc}")
 
     def request_reconnect(self, keep_context: bool = True, reason: str = ""):
         """Thread-safe: ask the run loop to tear down and rebuild the Live
@@ -1176,6 +1279,8 @@ class JarvisLive:
                         img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
                         print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
                         _stall = "screen"
+                    if self._telegram_response_future is not None:
+                        self._telegram_media = [(img_b, mime_t)]
                     self._pending_vision = (img_b, mime_t, user_text, angle)
                     # The image is attached to this same exchange, so there is
                     # nothing to stall for and nothing to announce. Asking for an
@@ -1572,7 +1677,22 @@ class JarvisLive:
                                     }))
                             in_buf = []
 
-                            full_out = " ".join(out_buf).strip()
+                            raw_out = " ".join(out_buf).strip()
+                            # A repeated answer may be intentionally omitted
+                            # from the local activity log by the de-duplication
+                            # guard below, but a pending Telegram request still
+                            # needs its actual response.
+                            if (
+                                raw_out
+                                and not getattr(response, "tool_call", None)
+                                and self._telegram_response_future is not None
+                                and not self._telegram_response_future.done()
+                            ):
+                                self._telegram_response_future.set_result({
+                                    "text": raw_out,
+                                    "media": list(self._telegram_media or []),
+                                })
+                            full_out = raw_out
                             # Second line of defence: even if a repeat slips
                             # into a *fresh* buffer after a flush, never log the
                             # same answer (or a tail of it) twice in a row.
@@ -2128,6 +2248,15 @@ class JarvisLive:
             print(f"[REMOTE CONTROL] Dashboard startup FAILED: {e}", flush=True)
             self._dashboard = None
 
+        # Telegram is optional and isolated from the Live connection.  It can
+        # report "disabled" without preventing the normal assistant startup.
+        self._plugin_registry.start_lifecycles(
+            message_handler=self._telegram_message,
+            status_provider=self._telegram_status,
+            clear_handler=self._telegram_clear,
+            logger=lambda msg: print(msg, flush=True),
+        )
+
         # The API-key dialog is owned by the Qt thread. Waiting in a worker
         # thread keeps the event loop alive so the dashboard can bind first.
         await asyncio.to_thread(self.ui.wait_for_api_key)
@@ -2325,6 +2454,10 @@ def main():
 
     def runner():
         jarvis = JarvisLive(ui)
+        try:
+            ui._app.aboutToQuit.connect(jarvis.shutdown)
+        except Exception:
+            pass
         try:
             asyncio.run(jarvis.run())
         except KeyboardInterrupt:

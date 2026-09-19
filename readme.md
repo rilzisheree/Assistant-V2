@@ -7,6 +7,39 @@ A real-time voice AI that can hear, see, speak, and control your computer — on
 
 ---
 
+## Telegram Remote Control
+
+MARK LIV can optionally receive messages from a Telegram bot through the
+official Bot API. It uses long polling, so the assistant makes outbound
+connections and does not require port forwarding or a public webhook.
+
+Set these environment variables before launching:
+
+```text
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+```
+
+Both values are required. If either is missing, Telegram Connect logs that it
+is disabled and the normal desktop assistant starts unchanged. Only the listed
+numeric Telegram user IDs can send requests; unknown users are ignored and
+logged locally. Telegram requests use the existing Gemini session, action
+system, memory, and file processor.
+
+Create a bot with **@BotFather** using `/newbot`, copy the token into your
+environment (never into source control), and find your numeric user ID by
+messaging **@userinfobot**. Start the assistant with:
+
+```bash
+python main.py
+```
+
+Test with `/start`, `/help`, `/status`, `/ping`, `/clear`, or a normal message.
+Photos and documents are downloaded to the ignored `downloads/telegram/`
+directory and passed to the existing file-processing path when requested.
+
+---
+
 ## ✨ Overview
 
 **MARK LIV is the release where JARVIS gets a face.** A holographic head sits at the centre of the HUD and **speaks your assistant's words with real lip-sync** — not a jaw flapping to the volume meter, but actual mouth shapes: lips closing on *m*, *b*, *p*, spreading on *i*, rounding on *u*. Brows ride the sentence, the eyes flick between fixation points, and it blinks. Turn the sound down and you can follow roughly what it just said.

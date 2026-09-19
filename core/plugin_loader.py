@@ -46,6 +46,7 @@ class PluginRecord:
     settings: Optional[dict] = None   # optional PLUGIN_SETTINGS schema (config fields)
     behavior: Optional[str] = None    # None = the API's default (blocking)
     scheduling: Optional[str] = None  # None = the API's default (WHEN_IDLE)
+    module: object | None = None
 
 
 class PluginRegistry:
@@ -138,6 +139,34 @@ class PluginRegistry:
             })
         return out
 
+    def start_lifecycles(self, **context) -> None:
+        """Start optional plugin services without making them part of discovery.
+
+        Lifecycle failures are isolated exactly like plugin import/run failures:
+        a broken optional integration must not prevent the assistant from starting.
+        """
+        for rec in self._plugins.values():
+            if not get_plugin_enabled(rec.name):
+                continue
+            start = getattr(rec.module, "start", None)
+            if not callable(start):
+                continue
+            try:
+                _call_lifecycle(start, context)
+            except Exception as exc:
+                self._logger(f"Plugin '{rec.name}' startup failed: {exc}")
+                self._notify(f"Plugin '{rec.name}' could not start — see the console.")
+
+    def stop_lifecycles(self) -> None:
+        for rec in self._plugins.values():
+            stop = getattr(rec.module, "stop", None)
+            if not callable(stop):
+                continue
+            try:
+                stop()
+            except Exception as exc:
+                self._logger(f"Plugin '{rec.name}' shutdown failed: {exc}")
+
 
 def _call_run(run_fn, parameters, player, session_memory):
     """Invoke run() passing only the kwargs it actually declares (or all of them
@@ -150,6 +179,17 @@ def _call_run(run_fn, parameters, player, session_memory):
     if has_var_kw or "session_memory" in sig.parameters:
         kwargs["session_memory"] = session_memory
     return run_fn(parameters, **kwargs)
+
+
+def _call_lifecycle(fn: Callable, context: dict) -> None:
+    """Pass only lifecycle arguments a plugin explicitly asks for."""
+    sig = inspect.signature(fn)
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    kwargs = {
+        key: value for key, value in context.items()
+        if has_var_kw or key in sig.parameters
+    }
+    fn(**kwargs)
 
 
 def _validate(module, filename: str) -> PluginRecord:
@@ -189,7 +229,8 @@ def _validate(module, filename: str) -> PluginRecord:
     return PluginRecord(name=name, description=description.strip(), parameters=parameters,
                          run=run_fn, file=filename, valid=True, error="", settings=settings,
                          behavior=_opt_upper(plugin_meta.get("behavior"), _BEHAVIORS),
-                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING))
+                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING),
+                         module=module)
 
 
 def _load_error(path: Path, plugins_dir: Path, exc: Exception) -> str:
