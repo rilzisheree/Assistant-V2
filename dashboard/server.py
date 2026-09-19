@@ -1,7 +1,7 @@
 """
 dashboard/server.py — JARVIS Local HTTP Dashboard
 
-Plain HTTP on port 8000 (no SSL warnings, no firewall issues).
+Plain HTTP on port 8001 (no SSL warnings, no firewall issues).
 Security at the application layer: AES-256-CBC with session-key-derived key.
 CryptoJS is auto-downloaded once and served locally — no CDN needed after that.
 
@@ -37,7 +37,7 @@ except Exception:
 
 BASE_DIR    = Path(__file__).resolve().parent.parent
 STATIC_DIR  = Path(__file__).parent / "static"
-PORT        = 8000
+PORT        = 8001
 MAX_UPLOAD_MB = 500
 
 
@@ -492,10 +492,13 @@ class DashboardServer:
         return f"{proto}://{self._ip}:{PORT}"
 
     def get_manual_url(self) -> str:
-        """URL for manual browser entry. When HTTPS active, points to alias port (also HTTPS)."""
-        if self._ssl_enabled():
-            return f"{self._ip}:{PORT + 1}"
-        return f"{self._ip}:{PORT}"
+        """Return the same primary endpoint used by the QR code.
+
+        The HTTPS compatibility alias remains available on PORT + 1 for
+        existing sessions, but new manual connections must not be sent to a
+        different port than the QR flow.
+        """
+        return self.get_url()
 
     def _aes_key(self, session_key: str) -> bytes:
         if session_key not in self._aes_cache:
