@@ -505,9 +505,18 @@ def _safe_move_to(
             screenshot_size = metadata.get("screenshot_size")
             if raw is not None and screenshot_size:
                 try:
-                    if not (0 <= int(raw[0]) < int(screenshot_size[0])
-                            and 0 <= int(raw[1]) < int(screenshot_size[1])):
-                        reasons.append("detected coordinate is outside the source screenshot")
+                    if metadata.get("model_coordinate_space") == "normalized-0-1000":
+                        raw_in_bounds = (
+                            0 <= float(raw[0]) <= 1000
+                            and 0 <= float(raw[1]) <= 1000
+                        )
+                    else:
+                        raw_in_bounds = (
+                            0 <= int(raw[0]) < int(screenshot_size[0])
+                            and 0 <= int(raw[1]) < int(screenshot_size[1])
+                        )
+                    if not raw_in_bounds:
+                        reasons.append("detected coordinate is outside the source coordinate space")
                 except (TypeError, ValueError, IndexError):
                     reasons.append("detected coordinate is malformed")
 

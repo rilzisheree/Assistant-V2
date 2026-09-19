@@ -555,8 +555,11 @@ def _screen_find(
             f"{screenshot_size[0]}×{screenshot_size[1]} pixels with origin "
             f"{screenshot_origin}. "
             f"Locate the UI element described as: '{description}'. "
-            f"Reply with ONLY the center coordinates as: x,y "
-            f"If the element is not visible, reply: NOT_FOUND"
+            "Reply with ONLY the center coordinates normalized to a 0–1000 "
+            "image grid as x,y, where (0,0) is the top-left and (1000,1000) "
+            "is the bottom-right. Do not return pixel coordinates, browser "
+            "coordinates, or a bounding box. If the element is not visible, "
+            "reply: NOT_FOUND"
         )
         print(
             "[ComputerControl] SCREEN_COORDINATE_CAPTURE "
@@ -578,22 +581,51 @@ def _screen_find(
         if "NOT_FOUND" in text.upper():
             coords = None
         else:
-            match = re.search(r"(\d+)\s*,\s*(\d+)", text)
-            coords = (int(match.group(1)), int(match.group(2))) if match else None
+            match = re.search(
+                r"(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)",
+                text,
+            )
+            if match:
+                normalized = (float(match.group(1)), float(match.group(2)))
+                coords = (
+                    normalized
+                    if all(0.0 <= value <= 1000.0 for value in normalized)
+                    else None
+                )
+            else:
+                coords = None
 
-        scale, transform, mapping_error = _coordinate_mapping(
+        desktop_scale, desktop_transform, mapping_error = _coordinate_mapping(
             screenshot_size, screen_size, physical_size, screenshot_origin
         )
         raw_coords = coords
         converted_screenshot_coordinate = None
-        if coords and scale is not None:
+        if coords and desktop_scale is not None:
+            # Gemini visual grounding returns the model coordinate in a
+            # normalized 0–1000 image space. Convert that model space to the
+            # exact pixels of the captured frame before applying any desktop
+            # origin or measured screenshot/display scale.
+            model_to_screenshot = (
+                (screenshot_size[0] - 1) / 1000.0,
+                (screenshot_size[1] - 1) / 1000.0,
+            )
+            normalized_screenshot_coordinate = (
+                round(coords[0] * model_to_screenshot[0]),
+                round(coords[1] * model_to_screenshot[1]),
+            )
             converted_screenshot_coordinate = (
-                round(coords[0] * scale[0]),
-                round(coords[1] * scale[1]),
+                normalized_screenshot_coordinate[0],
+                normalized_screenshot_coordinate[1],
             )
             coords = (
-                round(screenshot_origin[0] + converted_screenshot_coordinate[0]),
-                round(screenshot_origin[1] + converted_screenshot_coordinate[1]),
+                round(
+                    screenshot_origin[0]
+                    + converted_screenshot_coordinate[0] * desktop_scale[0]
+                ),
+                round(
+                    screenshot_origin[1]
+                    + converted_screenshot_coordinate[1] * desktop_scale[1]
+                ),
             )
         elif mapping_error:
             coords = None
@@ -614,12 +646,22 @@ def _screen_find(
             "raw_coordinates": raw_coords,
             "converted_screenshot_coordinate": converted_screenshot_coordinate,
             "final_coordinates": coords,
-            "coordinate_scale": scale,
-            "coordinate_transform": transform,
+            "model_coordinate_space": "normalized-0-1000",
+            "model_coordinate_scale": (
+                (screenshot_size[0] - 1) / 1000.0,
+                (screenshot_size[1] - 1) / 1000.0,
+            ),
+            "coordinate_scale": desktop_scale,
+            "coordinate_transform": (
+                "normalized-0-1000-to-screenshot-pixels"
+                f" -> {desktop_transform}"
+            ),
             "coordinate_mapping_error": mapping_error,
-            "direct_coordinates": bool(transform and transform.startswith("direct")),
+            "direct_coordinates": bool(
+                desktop_transform and desktop_transform.startswith("direct")
+            ),
             "coordinate_space": (
-                "full-desktop screenshot; "
+                "Gemini normalized-0-1000 -> full-desktop screenshot; "
                 f"origin={screenshot_origin}"
             ),
             "windows_dpi_awareness": _DPI_AWARENESS,
@@ -649,7 +691,8 @@ def _screen_find(
                     draw.line((mx - 28, my, mx + 28, my), fill=(255, 32, 32), width=3)
                     draw.line((mx, my - 28, mx, my + 28), fill=(255, 32, 32), width=3)
                     label = (
-                        f"detected={raw_coords} final={coords} "
+                        f"normalized={raw_coords} screenshot={converted_screenshot_coordinate} "
+                        f"final={coords} "
                         f"image={screenshot_size} origin={screenshot_origin}"
                     )
                     draw.rectangle((8, 8, min(screenshot_size[0] - 8, 900), 34), fill=(0, 0, 0))
