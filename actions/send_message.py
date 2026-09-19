@@ -210,6 +210,22 @@ def _screen_verdict(prompt: str, allowed: tuple[str, ...]) -> str | None:
     return None
 
 
+def _capture_post_click_screenshot(label: str = "messenger_call_failure") -> str | None:
+    """Save a local post-click UI snapshot without putting it in source control."""
+    _require_pyautogui()
+    try:
+        directory = Path.home() / "screenshots"
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path = directory / f"{label}-{stamp}.png"
+        pyautogui.screenshot().save(path)
+        print(f"POST_CLICK_SCREENSHOT path={path}")
+        return str(path)
+    except Exception as exc:
+        print(f"POST_CLICK_SCREENSHOT_FAILED: {exc}")
+        return None
+
+
 def _active_window_dimensions() -> str:
     """Return best-effort geometry for the active desktop window."""
     try:
@@ -733,6 +749,7 @@ def start_messenger_call_verified(
 ) -> dict:
     """Start a Messenger call only after verifying contact and connection."""
     _require_pyautogui()
+    click_attempted = False
     try:
         direct_url = _messenger_escalation_url(conversation_url)
         if not _open_browser_url(direct_url):
@@ -850,12 +867,10 @@ def start_messenger_call_verified(
                     "cursor_coordinate_match": cursor_match,
                 },
             }
-        click_attempted = False
         try:
             print("CALL_BUTTON_CURSOR_VERIFIED diagnostic_only=false")
-            _safe_click_messenger(coords, metadata=_mapping)
             click_attempted = True
-            print("CALL_INITIATED")
+            _safe_click_messenger(coords, metadata=_mapping)
         finally:
             if diagnostic:
                 print(f"Click attempted: {'yes' if click_attempted else 'no'}")
@@ -866,6 +881,7 @@ def start_messenger_call_verified(
         deadline = time.monotonic() + 12.0
         last_verdict = None
         saw_connecting = False
+        call_initiated = False
         while time.monotonic() < deadline:
             time.sleep(1.5)
             last_verdict = _screen_verdict(
@@ -881,8 +897,14 @@ def start_messenger_call_verified(
                 print(f"Visual/state change detected afterward: {last_verdict or 'UNKNOWN'}")
             if last_verdict == "CONNECTING":
                 saw_connecting = True
+                if not call_initiated:
+                    call_initiated = True
+                    print("CALL_INITIATED")
                 print("CALL_CONNECTING")
             if last_verdict == "CONNECTED":
+                if not call_initiated:
+                    call_initiated = True
+                    print("CALL_INITIATED")
                 print("CALL_CONNECTED")
                 return {
                     "connected": True,
@@ -893,26 +915,57 @@ def start_messenger_call_verified(
                     ),
                 }
             if last_verdict == "NOT_CONNECTED":
+                screenshot_path = _capture_post_click_screenshot()
                 return {
                     "connected": False,
                     "state": "CALL_NOT_CONNECTED",
-                    "detail": "Messenger call did not reach a connected state.",
+                    "detail": (
+                        "Messenger call did not reach a connected state; "
+                        f"post-click UI verdict was NOT_CONNECTED"
+                        + (
+                            f" (screenshot: {screenshot_path})"
+                            if screenshot_path
+                            else " (post-click screenshot unavailable)"
+                        )
+                        + "."
+                    ),
+                    "post_click_screenshot": screenshot_path,
                 }
         final_state = (
             "CALL_CONNECTING"
             if saw_connecting
             else "CALL_UNKNOWN"
         )
+        screenshot_path = _capture_post_click_screenshot()
         return {
             "connected": None,
             "state": final_state,
             "detail": (
                 f"{final_state}: Messenger call connection could not be verified "
-                f"(verdict: {last_verdict or 'UNKNOWN'})."
+                f"(post-click verdict: {last_verdict or 'UNKNOWN'}); "
+                "the call was not reported as connected"
+                + (
+                    f" (screenshot: {screenshot_path})."
+                    if screenshot_path
+                    else " (post-click screenshot unavailable)."
+                )
             ),
+            "post_click_screenshot": screenshot_path,
         }
     except Exception as e:
-        return {"connected": False, "detail": f"Messenger call failed safely: {e}"}
+        screenshot_path = (
+            _capture_post_click_screenshot()
+            if click_attempted
+            else None
+        )
+        detail = f"Messenger call failed safely: {e}"
+        if screenshot_path:
+            detail += f" Post-click screenshot: {screenshot_path}."
+        return {
+            "connected": False,
+            "detail": detail,
+            "post_click_screenshot": screenshot_path,
+        }
 
 
 def verify_messenger_call_connection(

@@ -775,12 +775,9 @@ class JarvisLive:
                 messenger,
                 int(config.get("max_call_duration_minutes", 5)),
                 messenger_url,
-                True,
+                False,
             )
             detail = str(result.get("detail", result))
-            if result.get("state") == "CURSOR_MOVED":
-                self._test_progress("CURSOR MOVED (DIAGNOSTIC ONLY)", detail)
-                return
             if result.get("connected") is not True:
                 self._test_progress("FAILED", f"Messenger call was not verified: {detail}")
                 return
