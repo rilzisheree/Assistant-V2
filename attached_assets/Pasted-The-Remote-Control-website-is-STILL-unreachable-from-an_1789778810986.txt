@@ -1,0 +1,234 @@
+The Remote Control website is STILL unreachable from another device.
+
+Opening:
+
+`http://192.168.100.17:8001`
+
+results in:
+
+`ERR_CONNECTION_REFUSED`
+
+The QR code has the same problem.
+
+The previous attempted fix did NOT solve it.
+
+### STOP MAKING ASSUMPTIONS
+
+Do not simply change the QR code, frontend URL, or UI again.
+
+I need you to **diagnose the actual cause on the computer running the AI Assistant**.
+
+Before changing code, inspect the current implementation and determine exactly what is happening.
+
+### 1. Verify whether anything is actually listening on port 8001
+
+Find the process that is supposed to host the Remote Control website.
+
+Verify whether TCP port `8001` is actually listening.
+
+On Windows, use an appropriate command such as:
+
+`netstat -ano | findstr :8001`
+
+or PowerShell equivalent.
+
+Determine:
+
+* Whether port 8001 is listening
+* Which PID owns it
+* Which application/process that PID belongs to
+* What local address it is bound to
+
+Do NOT assume the server is running just because the application itself is open.
+
+### 2. Verify localhost
+
+From the SAME computer running the AI Assistant, test:
+
+`http://127.0.0.1:8001`
+
+and:
+
+`http://localhost:8001`
+
+If these fail, the Remote Control web server itself is not running correctly.
+
+If these work but:
+
+`http://192.168.100.17:8001`
+
+fails on the SAME computer, investigate the server binding/interface configuration.
+
+### 3. Verify the LAN IP
+
+Confirm that the computer actually currently has:
+
+`192.168.100.17`
+
+as one of its active IPv4 addresses.
+
+Do NOT assume this IP is still correct.
+
+Use the Windows network configuration to verify the actual current IPv4 address.
+
+If the machine's IP has changed, update the Remote Control URL/QR generation to use the current LAN IPv4 address.
+
+### 4. Verify the server binding
+
+Inspect the actual web-server startup code.
+
+Find exactly where the Remote Control server is started.
+
+If it is bound to:
+
+`127.0.0.1`
+
+or:
+
+`localhost`
+
+change it to the appropriate LAN-accessible binding, typically:
+
+`0.0.0.0`
+
+on port:
+
+`8001`
+
+But ONLY do this if the framework/server implementation actually requires it.
+
+Do not blindly add another server or start a second server.
+
+### 5. Check whether the server is crashing
+
+Inspect the terminal/log output when the Remote Control server starts.
+
+Look specifically for:
+
+* Address already in use
+* Permission errors
+* Startup exceptions
+* Import errors
+* WebSocket errors
+* Port binding errors
+* Server immediately shutting down
+* Exceptions occurring after startup
+
+If the server starts and then crashes, fix the actual exception.
+
+### 6. Test from the same PC using the LAN address
+
+The following must work on the AI Assistant computer itself:
+
+`http://192.168.100.17:8001`
+
+If localhost works but this does not, identify exactly why.
+
+Do NOT move on to QR code changes until this test works.
+
+### 7. Test the Windows firewall
+
+If:
+
+`127.0.0.1:8001` works
+
+and:
+
+`192.168.100.17:8001` works locally
+
+but another device still receives:
+
+`ERR_CONNECTION_REFUSED`
+
+then investigate Windows Firewall/network profile rules.
+
+Check whether inbound TCP port `8001` is blocked.
+
+Create ONLY the necessary inbound rule for TCP `8001` if required.
+
+Do NOT disable Windows Firewall.
+
+Do NOT recommend disabling all firewall/security protections.
+
+### 8. Check the network profile
+
+Determine whether the active Windows network is:
+
+* Private
+* Public
+
+If the firewall rule is restricted to Private networks, make sure the current LAN configuration is compatible.
+
+Do not make the computer unnecessarily exposed to the public internet.
+
+### 9. Check the router/LAN situation
+
+Determine whether the phone/device is actually on the same LAN/subnet as the AI Assistant computer.
+
+For example, compare:
+
+PC:
+`192.168.100.17`
+
+Phone:
+`192.168.100.x`
+
+If the phone is on a guest Wi-Fi network, isolated VLAN, VPN, or client-isolated wireless network, explain that this can prevent LAN access.
+
+Do NOT attempt to expose port 8001 to the internet.
+
+### 10. WebSocket/API addresses
+
+After fixing the basic website connection, inspect the Remote Control frontend.
+
+Make sure API/WebSocket connections are NOT hardcoded to:
+
+`localhost`
+
+or:
+
+`127.0.0.1`
+
+because on a phone, `localhost` means the PHONE itself.
+
+They should use the same reachable host as the Remote Control server, for example:
+
+`192.168.100.17:8001`
+
+Use the appropriate `http://` / `ws://` protocol based on the existing implementation.
+
+### 11. QR CODE
+
+Only AFTER the server itself is confirmed reachable, verify the QR code.
+
+The QR code should encode the exact working URL:
+
+`http://192.168.100.17:8001`
+
+or the correct Remote Control route.
+
+Do not generate a URL until you have confirmed that manually entering that URL works.
+
+### DO NOT FINISH WITH "SHOULD WORK"
+
+I want an actual diagnosis.
+
+Report the result of these checks:
+
+1. What process is listening on port 8001?
+2. What address is it bound to?
+3. Does `127.0.0.1:8001` work?
+4. Does `192.168.100.17:8001` work from the same PC?
+5. What is the PC's actual current LAN IPv4 address?
+6. Is Windows Firewall blocking TCP 8001?
+7. Is the phone/device on the same LAN?
+8. Is the frontend incorrectly using localhost?
+9. What exact change was made to fix the root cause?
+
+Only make code changes that are necessary after identifying the cause.
+
+The goal is NOT merely to make the QR code look correct.
+
+The goal is:
+
+**Another device on the same LAN → `192.168.100.17:8001` → Remote Control website actually loads.**

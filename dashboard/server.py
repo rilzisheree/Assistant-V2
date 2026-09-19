@@ -488,8 +488,10 @@ class DashboardServer:
         return (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
 
     def get_url(self) -> str:
-        proto = "https" if self._ssl_enabled() else "http"
-        return f"{proto}://{self._ip}:{PORT}"
+        # The primary LAN endpoint is deliberately plain HTTP. The dashboard
+        # payloads are protected at the application layer with the paired
+        # session key, and this is the URL the QR code must encode.
+        return f"http://{self._ip}:{PORT}"
 
     def get_manual_url(self) -> str:
         """Return the same primary endpoint used by the QR code.
@@ -866,9 +868,10 @@ class DashboardServer:
         # no waiting for UAC dialogs or subprocess timeouts.
         asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT)
 
-        # Generate the TLS pair on first run so no private key ships in the repo.
-        _ensure_certs()
-
+        # Keep the primary endpoint plain HTTP so it matches the LAN URL shown
+        # to users and encoded by the QR code. If certificates already exist,
+        # retain the legacy HTTPS compatibility alias on PORT + 1, but do not
+        # make the primary HTTP endpoint depend on TLS setup.
         use_ssl  = self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
@@ -878,10 +881,8 @@ class DashboardServer:
 
         cfg = uvicorn.Config(
             self.app, host="0.0.0.0", port=PORT, log_level="warning",
-            **({"ssl_keyfile": str(ssl_key), "ssl_certfile": str(ssl_cert)} if use_ssl else {}),
         )
 
-        proto = "https" if use_ssl else "http"
-        print(f"[Dashboard] {proto}://{self._ip}:{PORT}")
+        print(f"[Dashboard] http://{self._ip}:{PORT}")
         print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.")
         await uvicorn.Server(cfg).serve()
