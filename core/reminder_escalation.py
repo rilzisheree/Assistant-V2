@@ -306,6 +306,46 @@ def cancel(text: str) -> str | None:
     return None
 
 
+def cancel_by_id(reminder_id: str, reason: str = "Cancelled from reminders settings.") -> bool:
+    """Cancel one escalation without relying on a voice command match."""
+    if not reminder_id:
+        return False
+    with _LOCK:
+        records = _read()
+        for record in records:
+            if record.get("id") != reminder_id:
+                continue
+            if record.get("state") not in _ACTIVE_STATES:
+                return False
+            stamp = _now().isoformat()
+            record["state"] = "cancelled"
+            record["cancelled_at"] = stamp
+            record["cancel_reason"] = str(reason)
+            record["updated_at"] = stamp
+            _write(records)
+            return True
+    return False
+
+
+def cleanup_legacy_test_records() -> int:
+    """Remove persisted records left by the retired automatic test mode."""
+    with _LOCK:
+        records = _read()
+        kept = []
+        removed = 0
+        for record in records:
+            haystack = " ".join(
+                str(record.get(key, "")) for key in ("id", "message", "state")
+            ).lower()
+            if "test" in haystack:
+                removed += 1
+            else:
+                kept.append(record)
+        if removed:
+            _write(kept)
+        return removed
+
+
 def mark_whatsapp_result(
     reminder_id: str,
     result: str,

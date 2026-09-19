@@ -2,7 +2,7 @@ modules = ["python-3.12", "web"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "freetype", "gitFull", "lcms2", "libGL", "libGLU", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "playwright-driver", "portaudio", "rustc", "scrot", "tcl", "tk", "xvfb-run", "zlib"]
+packages = ["cargo", "freetype", "gitFull", "lcms2", "libGL", "libGLU", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "playwright-driver", "portaudio", "rustc", "scrot", "tcl", "tk", "xvfb-run", "zlib", "libxkbcommon", "dbus"]
 
 [agent]
 expertMode = true

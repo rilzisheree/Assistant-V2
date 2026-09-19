@@ -67,6 +67,17 @@ from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
+from actions.reminder import (
+    list_managed_reminders,
+    create_managed_reminder,
+    update_managed_reminder,
+    set_managed_reminder_enabled,
+    delete_managed_reminder,
+    cancel_scheduled_reminder,
+    cancel_latest_scheduled_reminder,
+    cleanup_legacy_test_reminders,
+    restore_managed_reminders,
+)
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -86,6 +97,8 @@ from core.wake_word            import (
 from core.reminder_escalation import (
     acknowledge as acknowledge_reminder,
     cancel as cancel_reminder_escalation,
+    cancel_by_id as cancel_reminder_by_id,
+    cleanup_legacy_test_records,
     mark_contact_response as mark_escalation_contact_response,
     mark_call_result as mark_escalation_call_result,
     mark_whatsapp_result as mark_escalation_whatsapp_result,
@@ -614,6 +627,8 @@ class JarvisLive:
         self._telegram_media = None
         self._telegram_lock = None
         self._started_at = time.monotonic()
+        self._instant_test_task = None
+        self._instant_test_cancelled = False
 
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
@@ -667,6 +682,101 @@ class JarvisLive:
         self.ui.on_wake_toggle   = self._ui_wake_toggle   # (enable: bool) -> str
         self.ui.on_wake_manual   = self._ui_wake_manual   # () -> toggle awake/asleep
         self.ui.on_wake_install  = self._ui_wake_install  # () -> (ok, msg)
+        self.ui.get_reminders = list_managed_reminders
+        self.ui.on_save_reminder = self._ui_save_reminder
+        self.ui.on_update_reminder = self._ui_update_reminder
+        self.ui.on_toggle_reminder = self._ui_toggle_reminder
+        self.ui.on_delete_reminder = self._ui_delete_reminder
+        self.ui.on_test_escalation = self._ui_test_escalation
+    # ── Reminder settings callbacks ──────────────────────────────────────────
+    @staticmethod
+    def _reminder_datetime(payload: dict) -> datetime:
+        return datetime.fromisoformat(str(payload.get("target", "")))
+
+    def _ui_save_reminder(self, payload: dict) -> dict:
+        return create_managed_reminder(
+            message=str(payload.get("message", "")),
+            target=self._reminder_datetime(payload),
+            frequency=str(payload.get("frequency", "once")),
+            weekdays=list(payload.get("weekdays") or []),
+            escalation=dict(payload.get("escalation") or {}),
+        )
+
+    def _ui_update_reminder(self, reminder_id: str, payload: dict) -> dict:
+        return update_managed_reminder(
+            reminder_id=str(reminder_id),
+            message=str(payload.get("message", "")),
+            target=self._reminder_datetime(payload),
+            frequency=str(payload.get("frequency", "once")),
+            weekdays=list(payload.get("weekdays") or []),
+            escalation=dict(payload.get("escalation") or {}),
+        )
+
+    def _ui_toggle_reminder(self, reminder_id: str, enabled: bool) -> dict:
+        return set_managed_reminder_enabled(str(reminder_id), bool(enabled))
+
+    def _ui_delete_reminder(self, reminder_id: str) -> bool:
+        return delete_managed_reminder(str(reminder_id))
+
+    def _ui_test_escalation(self, config: dict) -> None:
+        if self._loop is None:
+            self.ui.set_reminder_test_progress("FAILED", "Assistant loop is not ready.")
+            return
+        if self._instant_test_task and not self._instant_test_task.done():
+            self.ui.set_reminder_test_progress("RUNNING", "A test is already in progress.")
+            return
+        self._instant_test_cancelled = False
+        self._instant_test_task = asyncio.run_coroutine_threadsafe(
+            self._run_instant_escalation_test(dict(config or {})), self._loop
+        )
+
+    def _test_progress(self, stage: str, detail: str = "") -> None:
+        self.ui.set_reminder_test_progress(stage, detail)
+        self.ui.write_log(f"[ESCALATION TEST] {stage}" + (f": {detail}" if detail else ""))
+
+    async def _run_instant_escalation_test(self, config: dict) -> None:
+        """Run one real escalation pass with timeout gates intentionally bypassed."""
+        from actions.send_message import (
+            send_whatsapp_verified,
+            start_messenger_call_verified,
+        )
+
+        message = str(config.get("initial_message") or "").strip() or (
+            "فكّرتك: ده اختبار تصعيد للتذكير. لو شفت الرسالة طمّنّي عليك."
+        )
+        whatsapp = str(config.get("whatsapp_contact_name") or "Baba").strip()
+        messenger = str(config.get("messenger_contact_name") or "شريف كمال").strip()
+        self._test_progress("Reminder triggered")
+        self._test_progress("Acknowledgement bypassed")
+        self._test_progress("Opening WhatsApp", f"Verifying exact contact: {whatsapp}")
+        try:
+            result = await asyncio.to_thread(send_whatsapp_verified, whatsapp, message)
+            detail = str(result.get("detail", result))
+            if result.get("sent") is not True:
+                self._test_progress("FAILED", f"WhatsApp message was not verified: {detail}")
+                return
+            self._test_progress("Message sent", detail)
+            if self._instant_test_cancelled:
+                self._test_progress("CANCELLED", "Test cancellation requested.")
+                return
+            self._test_progress("Response timeout bypassed")
+            self._test_progress("Opening Messenger", f"Verifying exact contact: {messenger}")
+            result = await asyncio.to_thread(
+                start_messenger_call_verified,
+                messenger,
+                int(config.get("max_call_duration_minutes", 5)),
+            )
+            detail = str(result.get("detail", result))
+            if result.get("connected") is not True:
+                self._test_progress("FAILED", f"Messenger call was not verified: {detail}")
+                return
+            self._test_progress("Call verified", detail)
+            self._test_progress(
+                "COMPLETE",
+                "Messenger/Gemini audio bridge is unavailable; no Gemini voice session was claimed.",
+            )
+        except Exception as exc:
+            self._test_progress("FAILED", str(exc))
 
     # ── Wake word: state machine ─────────────────────────────────────────────
 
@@ -1677,15 +1787,29 @@ class JarvisLive:
                             if full_in:
                                 cancelled = cancel_reminder_escalation(full_in)
                                 if cancelled:
+                                    self._instant_test_cancelled = True
+                                    if self._instant_test_task and not self._instant_test_task.done():
+                                        self._instant_test_task.cancel()
+                                    await asyncio.to_thread(
+                                        cancel_scheduled_reminder, cancelled
+                                    )
                                     self.ui.write_log(
                                         f"SYS: Reminder escalation cancelled — {cancelled}"
                                     )
                                 else:
-                                    acknowledged = acknowledge_reminder(full_in)
-                                    if acknowledged:
+                                    normal_cancelled = await asyncio.to_thread(
+                                        cancel_latest_scheduled_reminder, full_in
+                                    )
+                                    if normal_cancelled:
                                         self.ui.write_log(
-                                            f"SYS: Reminder acknowledged — {acknowledged}"
+                                            f"SYS: Reminder cancelled — {normal_cancelled}"
                                         )
+                                    else:
+                                        acknowledged = acknowledge_reminder(full_in)
+                                        if acknowledged:
+                                            self.ui.write_log(
+                                                f"SYS: Reminder acknowledged — {acknowledged}"
+                                            )
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
@@ -2113,6 +2237,15 @@ class JarvisLive:
 
     async def _run_reminder_escalation(self) -> None:
         """Advance explicit reminder escalations independently of Live sessions."""
+        removed_managed = await asyncio.to_thread(cleanup_legacy_test_reminders)
+        removed_escalations = await asyncio.to_thread(cleanup_legacy_test_records)
+        restored = await asyncio.to_thread(restore_managed_reminders)
+        if removed_managed or removed_escalations:
+            self.ui.write_log(
+                f"SYS: Removed {removed_managed + removed_escalations} retired reminder test record(s)."
+            )
+        if restored:
+            self.ui.write_log(f"SYS: Restored {restored} reminder schedule(s).")
         # Never replay an irreversible UI action after a process restart.
         # In-flight records are moved to verification-only recovery states.
         await asyncio.to_thread(recover_reminder_escalations)

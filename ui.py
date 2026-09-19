@@ -21,9 +21,9 @@ else:
     _WIN_HIDE: dict = {}
 
 from PyQt6.QtCore import (
-    QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPoint,
+    QDate, QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPoint,
     QPointF,
-    QPropertyAnimation, QRect, QRectF, QSize, Qt, QTimer, QUrl, pyqtSignal,
+    QPropertyAnimation, QRect, QRectF, QSize, QTime, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QDragEnterEvent, QDropEvent, QFont,
@@ -31,8 +31,9 @@ from PyQt6.QtGui import (
     QPen, QPixmap, QRadialGradient, QShortcut, QTextOption,
 )
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QGraphicsOpacityEffect, QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSplitter,
+    QApplication, QCheckBox, QComboBox, QDateEdit, QFileDialog, QFrame, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QScrollArea, QTimeEdit,
+    QGraphicsOpacityEffect, QMainWindow, QPushButton, QSizePolicy, QSplitter,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMenu,
 )
 
@@ -3500,6 +3501,357 @@ class PluginSettingsOverlay(QWidget):
         lbl.setStyleSheet(f"color: {color}; background: transparent;")
 
 
+class RemindersSettingsOverlay(QWidget):
+    """Compact Settings → Reminders panel backed by the native scheduler."""
+
+    _OW, _OH = 720, 620
+
+    def __init__(
+        self,
+        get_reminders=None,
+        save_reminder=None,
+        update_reminder=None,
+        toggle_reminder=None,
+        delete_reminder=None,
+        test_escalation=None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._get_reminders = get_reminders
+        self._save_reminder = save_reminder
+        self._update_reminder = update_reminder
+        self._toggle_reminder = toggle_reminder
+        self._delete_reminder = delete_reminder
+        self._test_escalation = test_escalation
+        self._editing_id = None
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"""
+            RemindersSettingsOverlay {{
+                background: rgba(0, 6, 10, 248);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 6px;
+            }}
+            QDateEdit, QTimeEdit, QComboBox {{
+                background: {C.DARK}; color: {C.TEXT};
+                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 3px 6px;
+            }}
+            QDateEdit:focus, QTimeEdit:focus, QComboBox:focus {{
+                border-color: {C.PRI};
+            }}
+            QCheckBox {{ color: {C.TEXT_MED}; spacing: 5px; }}
+        """)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(7)
+        root.addWidget(self._label("⏰  SETTINGS  /  REMINDERS", 12, True, C.PRI))
+
+        form = QFrame()
+        form.setStyleSheet(
+            f"QFrame {{ background: {C.PANEL}; border: 1px solid {C.BORDER}; "
+            "border-radius: 4px; }"
+        )
+        fl = QVBoxLayout(form)
+        fl.setContentsMargins(10, 8, 10, 8)
+        fl.setSpacing(5)
+
+        row = QHBoxLayout()
+        row.addWidget(self._label("REMINDER", 8, True, C.TEXT_DIM))
+        self._message = QLineEdit()
+        self._message.setPlaceholderText("What should I remind you about?")
+        self._message.setFixedHeight(29)
+        row.addWidget(self._message, 1)
+        fl.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(self._label("DATE", 8, True, C.TEXT_DIM))
+        self._date = QDateEdit(QDate.currentDate())
+        self._date.setCalendarPopup(True)
+        self._date.setDisplayFormat("yyyy-MM-dd")
+        row.addWidget(self._date)
+        row.addWidget(self._label("TIME", 8, True, C.TEXT_DIM))
+        self._time = QTimeEdit(QTime.currentTime())
+        self._time.setDisplayFormat("HH:mm")
+        row.addWidget(self._time)
+        row.addWidget(self._label("SCHEDULE", 8, True, C.TEXT_DIM))
+        self._frequency = QComboBox()
+        self._frequency.addItems(["Once", "Daily", "Weekly"])
+        self._frequency.currentTextChanged.connect(self._schedule_changed)
+        row.addWidget(self._frequency)
+        fl.addLayout(row)
+
+        self._days_row = QWidget()
+        days_layout = QHBoxLayout(self._days_row)
+        days_layout.setContentsMargins(0, 0, 0, 0)
+        days_layout.setSpacing(4)
+        days_layout.addWidget(self._label("DAYS", 8, True, C.TEXT_DIM))
+        self._day_checks = []
+        for label, day in (
+            ("MON", 0), ("TUE", 1), ("WED", 2), ("THU", 3),
+            ("FRI", 4), ("SAT", 5), ("SUN", 6),
+        ):
+            check = QCheckBox(label)
+            check.setProperty("day", day)
+            self._day_checks.append(check)
+            days_layout.addWidget(check)
+        days_layout.addStretch(1)
+        fl.addWidget(self._days_row)
+
+        esc_row = QHBoxLayout()
+        self._escalation = QCheckBox("ENABLE ESCALATION")
+        self._escalation.setToolTip(
+            "Uses the existing acknowledgement → WhatsApp → Messenger flow."
+        )
+        esc_row.addWidget(self._escalation)
+        esc_row.addWidget(self._label("WhatsApp: Baba  •  Messenger: شريف كمال",
+                                       8, color=C.TEXT_DIM))
+        esc_row.addStretch(1)
+        fl.addLayout(esc_row)
+
+        buttons = QHBoxLayout()
+        self._save_btn = QPushButton("▸  ADD REMINDER")
+        self._save_btn.setFixedHeight(29)
+        self._save_btn.clicked.connect(self._save)
+        buttons.addWidget(self._save_btn)
+        clear = QPushButton("CLEAR")
+        clear.setFixedHeight(29)
+        clear.clicked.connect(self._clear_form)
+        buttons.addWidget(clear)
+        buttons.addStretch(1)
+        fl.addLayout(buttons)
+        root.addWidget(form)
+
+        root.addWidget(self._label("SCHEDULED REMINDERS", 9, True, C.PRI_DIM))
+        self._list_scroll = QScrollArea()
+        self._list_scroll.setWidgetResizable(True)
+        self._list_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._list_scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self._list_host = QWidget()
+        self._list_host.setStyleSheet("background: transparent;")
+        self._list_layout = QVBoxLayout(self._list_host)
+        self._list_layout.setContentsMargins(0, 0, 4, 0)
+        self._list_layout.setSpacing(4)
+        self._list_scroll.setWidget(self._list_host)
+        root.addWidget(self._list_scroll, 1)
+
+        self._test_status = self._label("No escalation test running.", 8, color=C.TEXT_DIM)
+        self._test_status.setWordWrap(True)
+        root.addWidget(self._test_status)
+        bottom = QHBoxLayout()
+        test_btn = QPushButton("⚠  TEST ESCALATION")
+        test_btn.setFixedHeight(31)
+        test_btn.setStyleSheet(
+            f"QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI}; "
+            f"border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ border-color: {C.PRI}; }}"
+        )
+        test_btn.clicked.connect(self._confirm_test)
+        bottom.addWidget(test_btn)
+        close = QPushButton("CLOSE")
+        close.setFixedHeight(31)
+        close.clicked.connect(self.hide)
+        bottom.addWidget(close)
+        root.addLayout(bottom)
+        self._schedule_changed(self._frequency.currentText())
+        self.refresh()
+
+    def _label(self, text, size=9, bold=False, color=None):
+        label = QLabel(str(text))
+        label.setFont(QFont("Courier New", size,
+                            QFont.Weight.Bold if bold else QFont.Weight.Normal))
+        label.setStyleSheet(f"color: {color or C.TEXT}; background: transparent;")
+        return label
+
+    def _schedule_changed(self, value):
+        self._days_row.setVisible(str(value).lower() == "weekly")
+
+    def _payload(self):
+        from datetime import datetime
+        frequency = self._frequency.currentText().lower()
+        target = datetime(
+            self._date.date().year(), self._date.date().month(),
+            self._date.date().day(), self._time.time().hour(),
+            self._time.time().minute(),
+        )
+        return {
+            "message": self._message.text().strip(),
+            "target": target.isoformat(),
+            "frequency": frequency,
+            "weekdays": [
+                int(check.property("day")) for check in self._day_checks
+                if check.isChecked()
+            ],
+            "escalation": {
+                "enabled": self._escalation.isChecked(),
+                "whatsapp_contact_name": "Baba",
+                "messenger_contact_name": "شريف كمال",
+                "initial_message": "",
+            },
+        }
+
+    def _save(self):
+        if not self._message.text().strip():
+            self._test_status.setText("Enter reminder text first.")
+            return
+        try:
+            payload = self._payload()
+            result = (
+                self._update_reminder(self._editing_id, payload)
+                if self._editing_id and self._update_reminder
+                else self._save_reminder(payload) if self._save_reminder else None
+            )
+            if result is None:
+                raise RuntimeError("Reminder service is not available.")
+            self._clear_form()
+            self.refresh()
+            self._test_status.setText("Reminder saved.")
+        except Exception as exc:
+            self._test_status.setText(f"Could not save reminder: {exc}")
+
+    def _clear_form(self):
+        self._editing_id = None
+        self._message.clear()
+        self._date.setDate(QDate.currentDate())
+        self._time.setTime(QTime.currentTime())
+        self._frequency.setCurrentText("Once")
+        for check in self._day_checks:
+            check.setChecked(False)
+        self._escalation.setChecked(False)
+        self._save_btn.setText("▸  ADD REMINDER")
+
+    def _edit(self, record):
+        from datetime import datetime
+        self._editing_id = str(record.get("id"))
+        self._message.setText(str(record.get("message", "")))
+        next_trigger = record.get("next_trigger")
+        target = (
+            datetime.fromisoformat(str(next_trigger))
+            if next_trigger else datetime.now()
+        )
+        self._date.setDate(QDate(target.year, target.month, target.day))
+        self._time.setTime(QTime(target.hour, target.minute))
+        self._frequency.setCurrentText(str(record.get("frequency", "once")).title())
+        selected = set(record.get("weekdays") or [])
+        for check in self._day_checks:
+            check.setChecked(int(check.property("day")) in selected)
+        self._escalation.setChecked(
+            bool((record.get("escalation") or {}).get("enabled"))
+        )
+        self._save_btn.setText("▸  UPDATE REMINDER")
+
+    def _row(self, record):
+        row = QFrame()
+        row.setStyleSheet(
+            f"QFrame {{ background: {C.PANEL}; border: 1px solid {C.BORDER}; "
+            "border-radius: 3px; }"
+        )
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(8, 5, 6, 5)
+        layout.setSpacing(7)
+        enabled = bool(record.get("enabled"))
+        text = str(record.get("message") or "Reminder")
+        freq = str(record.get("frequency", "once")).title()
+        next_at = record.get("next_trigger")
+        try:
+            from datetime import datetime
+            next_label = datetime.fromisoformat(str(next_at)).strftime("%b %d, %H:%M")
+        except Exception:
+            next_label = "completed"
+        label = self._label(
+            f"{text}\n{freq}  •  next {next_label}  •  "
+            f"{'ESCALATION ON' if (record.get('escalation') or {}).get('enabled') else 'normal'}",
+            8, color=C.TEXT if enabled else C.TEXT_DIM,
+        )
+        label.setMinimumWidth(250)
+        layout.addWidget(label, 1)
+        toggle = QPushButton("ON" if enabled else "OFF")
+        toggle.setFixedSize(45, 25)
+        toggle.setCheckable(True)
+        toggle.setChecked(enabled)
+        toggle.toggled.connect(
+            lambda value, rid=str(record.get("id")): self._toggle(rid, value)
+        )
+        layout.addWidget(toggle)
+        edit = QPushButton("EDIT")
+        edit.setFixedSize(48, 25)
+        edit.clicked.connect(lambda _=False, item=dict(record): self._edit(item))
+        layout.addWidget(edit)
+        delete = QPushButton("DELETE")
+        delete.setFixedSize(58, 25)
+        delete.clicked.connect(
+            lambda _=False, rid=str(record.get("id")): self._delete(rid)
+        )
+        layout.addWidget(delete)
+        return row
+
+    def refresh(self):
+        while self._list_layout.count():
+            item = self._list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        records = self._get_reminders() if self._get_reminders else []
+        if not records:
+            self._list_layout.addWidget(
+                self._label("No reminders configured.", 8, color=C.TEXT_DIM)
+            )
+        else:
+            for record in records:
+                self._list_layout.addWidget(self._row(record))
+        self._list_layout.addStretch(1)
+
+    def _toggle(self, reminder_id, enabled):
+        try:
+            if self._toggle_reminder:
+                self._toggle_reminder(reminder_id, enabled)
+            self.refresh()
+        except Exception as exc:
+            self._test_status.setText(f"Could not change reminder: {exc}")
+
+    def _delete(self, reminder_id):
+        answer = QMessageBox.question(
+            self, "Delete reminder", "Delete this reminder and its scheduled job?",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if self._delete_reminder:
+                self._delete_reminder(reminder_id)
+            self.refresh()
+        except Exception as exc:
+            self._test_status.setText(f"Could not delete reminder: {exc}")
+
+    def _confirm_test(self):
+        answer = QMessageBox.question(
+            self, "Run Escalation Test?",
+            "This immediately opens WhatsApp, messages Baba, and attempts the "
+            "Messenger escalation without normal timeout waits.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._test_status.setText("ESCALATION TEST  → starting…")
+        if self._test_escalation:
+            self._test_escalation({
+                "enabled": True,
+                "whatsapp_contact_name": "Baba",
+                "messenger_contact_name": "شريف كمال",
+                "initial_message": "",
+            })
+
+    def set_test_progress(self, stage: str, detail: str = ""):
+        self._test_status.setText(
+            f"ESCALATION TEST  → {stage}"
+            + (f"\n{detail}" if detail else "")
+        )
+        self._test_status.setStyleSheet(
+            f"color: {C.PRI if not stage.startswith('FAIL') else '#ff6b6b'}; "
+            "background: transparent;"
+        )
+
+
 class RemoteKeyOverlay(QWidget):
     """Floating overlay — QR code for instant phone pairing + manual key fallback."""
 
@@ -3796,6 +4148,7 @@ class MainWindow(QMainWindow):
     _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
     _confirm_hide_sig = pyqtSignal()
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
+    _reminder_progress_sig = pyqtSignal(str, str)
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
@@ -3833,6 +4186,14 @@ class MainWindow(QMainWindow):
         self._confirm_overlay  = None   # live ConfirmBanner, if one is on screen
         self.get_plugins       = None   # callable: () -> list[dict], set by JarvisLive
         self.get_plugin_settings = None # callable: () -> list[dict] settings schemas, set by JarvisLive
+        self.get_reminders = None
+        self.on_save_reminder = None
+        self.on_update_reminder = None
+        self.on_toggle_reminder = None
+        self.on_delete_reminder = None
+        self.on_test_escalation = None
+        self._reminders_overlay = None
+        self._reminder_progress_sig.connect(self._on_reminder_progress)
         self.on_wake_toggle    = None   # callable: (enable: bool) -> str, set by JarvisLive
         self.on_wake_manual    = None   # callable: () -> None — manual sleep/wake
         self.on_push_to_talk   = None   # callable: (enable: bool) -> str scope
@@ -5466,6 +5827,14 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_plugin_settings)
         lay.addWidget(settings_btn)
 
+        reminders_btn = QPushButton("⏰  REMINDERS")
+        reminders_btn.setFixedHeight(26)
+        reminders_btn.setFont(QFont("Courier New", 7))
+        reminders_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        reminders_btn.setStyleSheet(_BTN_STYLE_DIM)
+        reminders_btn.clicked.connect(self._open_reminders)
+        lay.addWidget(reminders_btn)
+
         w.adjustSize()
         return w
 
@@ -6778,6 +7147,33 @@ class MainWindow(QMainWindow):
         ov.raise_()
         self._plugin_settings_overlay = ov   # keep a reference so it isn't GC'd
 
+    def _open_reminders(self):
+        cw = self.centralWidget()
+        ov = RemindersSettingsOverlay(
+            get_reminders=self.get_reminders,
+            save_reminder=self.on_save_reminder,
+            update_reminder=self.on_update_reminder,
+            toggle_reminder=self.on_toggle_reminder,
+            delete_reminder=self.on_delete_reminder,
+            test_escalation=self.on_test_escalation,
+            parent=cw,
+        )
+        ow = RemindersSettingsOverlay._OW
+        oh = min(RemindersSettingsOverlay._OH, cw.height() - 16)
+        ov.setGeometry(
+            max(8, (cw.width() - ow) // 2),
+            max(8, (cw.height() - oh) // 2),
+            min(ow, cw.width() - 16),
+            oh,
+        )
+        ov.show()
+        ov.raise_()
+        self._reminders_overlay = ov
+
+    def _on_reminder_progress(self, stage: str, detail: str):
+        if self._reminders_overlay and self._reminders_overlay.isVisible():
+            self._reminders_overlay.set_test_progress(stage, detail)
+
     # ── Clipboard intelligence ───────────────────────────────────────────────────
 
     def _on_clipboard_changed(self):
@@ -7017,6 +7413,57 @@ class JarvisUI:
     @get_plugin_settings.setter
     def get_plugin_settings(self, cb):
         self._win.get_plugin_settings = cb
+
+    @property
+    def get_reminders(self):
+        return self._win.get_reminders
+
+    @get_reminders.setter
+    def get_reminders(self, cb):
+        self._win.get_reminders = cb
+
+    @property
+    def on_save_reminder(self):
+        return self._win.on_save_reminder
+
+    @on_save_reminder.setter
+    def on_save_reminder(self, cb):
+        self._win.on_save_reminder = cb
+
+    @property
+    def on_update_reminder(self):
+        return self._win.on_update_reminder
+
+    @on_update_reminder.setter
+    def on_update_reminder(self, cb):
+        self._win.on_update_reminder = cb
+
+    @property
+    def on_toggle_reminder(self):
+        return self._win.on_toggle_reminder
+
+    @on_toggle_reminder.setter
+    def on_toggle_reminder(self, cb):
+        self._win.on_toggle_reminder = cb
+
+    @property
+    def on_delete_reminder(self):
+        return self._win.on_delete_reminder
+
+    @on_delete_reminder.setter
+    def on_delete_reminder(self, cb):
+        self._win.on_delete_reminder = cb
+
+    @property
+    def on_test_escalation(self):
+        return self._win.on_test_escalation
+
+    @on_test_escalation.setter
+    def on_test_escalation(self, cb):
+        self._win.on_test_escalation = cb
+
+    def set_reminder_test_progress(self, stage: str, detail: str = ""):
+        self._win._reminder_progress_sig.emit(str(stage), str(detail))
 
     @property
     def on_wake_toggle(self):
