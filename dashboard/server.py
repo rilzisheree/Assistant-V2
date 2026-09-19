@@ -847,18 +847,47 @@ class DashboardServer:
 
     # ── serve ─────────────────────────────────────────────────────────────
 
+    async def _wait_for_listener(self, port: int, timeout: float = 10.0) -> None:
+        """Wait until the public Uvicorn server has opened its TCP socket."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        last_error = None
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("127.0.0.1", port), timeout=0.25
+                )
+                writer.close()
+                await writer.wait_closed()
+                return
+            except (OSError, asyncio.TimeoutError) as exc:
+                last_error = exc
+                await asyncio.sleep(0.05)
+        raise TimeoutError(f"Uvicorn did not open TCP port {port}: {last_error}")
+
     async def _serve_uvicorn(self, cfg, label: str, server_attr: str) -> None:
-        """Run one Uvicorn listener and report bind failures explicitly."""
+        """Run one listener through Uvicorn's supported serve() lifecycle."""
         server = uvicorn.Server(cfg)
         setattr(self, server_attr, server)
+        serve_task = asyncio.create_task(
+            server.serve(), name=f"remote-control-{cfg.port}"
+        )
         try:
-            await server.startup()
-            if not server.started:
-                raise RuntimeError(f"Uvicorn did not report {label} as started")
+            await self._wait_for_listener(cfg.port)
+            # A different process could already own the port. Make sure the
+            # Uvicorn task itself has not failed before reporting success.
+            if serve_task.done():
+                await serve_task
             print(f"[REMOTE CONTROL] Dashboard listening on {label}", flush=True)
-            await server.main_loop()
+            await serve_task
         finally:
-            await server.shutdown()
+            # `should_exit` is the public signal consumed by server.serve().
+            # Do not call Uvicorn's internal startup/shutdown methods directly.
+            if not serve_task.done():
+                server.should_exit = True
+                try:
+                    await serve_task
+                except asyncio.CancelledError:
+                    serve_task.cancel()
             setattr(self, server_attr, None)
 
     async def _serve_alias(self) -> None:

@@ -1,0 +1,266 @@
+We now have the EXACT runtime failure. Do not diagnose the network again.
+
+The Remote Control server DOES attempt to start, but it crashes immediately because `dashboard/server.py` is manually interacting with Uvicorn's internal `Server` object incorrectly.
+
+The actual errors are:
+
+```text
+[REMOTE CONTROL] Starting dashboard server...
+[Dashboard] http://192.168.100.17:8001
+[REMOTE CONTROL] Dashboard startup FAILED: 'Server' object has no attribute 'servers'
+```
+
+and the traceback shows:
+
+```text
+await server.startup()
+```
+
+causing:
+
+```text
+AttributeError: 'Server' object has no attribute 'lifespan'
+```
+
+Then the cleanup code calls:
+
+```text
+await server.shutdown()
+```
+
+which causes:
+
+```text
+AttributeError: 'Server' object has no attribute 'servers'
+```
+
+### ROOT CAUSE
+
+The current `dashboard/server.py` implementation is manually calling Uvicorn's internal:
+
+* `server.startup()`
+* `server.shutdown()`
+* internal server state
+
+This is incompatible with the installed Uvicorn version.
+
+### FIX THE ACTUAL UVICORN IMPLEMENTATION
+
+Do NOT change the Remote Control UI.
+
+Do NOT change the port.
+
+Do NOT change the QR code.
+
+Do NOT change the IP.
+
+Do NOT change the routes.
+
+Do NOT change authentication.
+
+Do NOT change WebSocket behavior.
+
+Do NOT rewrite the Remote Control application.
+
+Fix ONLY the way the existing Uvicorn server is launched and shut down.
+
+### IMPORTANT
+
+Use Uvicorn's supported/public server execution mechanism instead of manually calling incompatible internal lifecycle methods.
+
+The existing Remote Control server should still listen on:
+
+`0.0.0.0:8001`
+
+The public URL remains:
+
+`http://192.168.100.17:8001`
+
+### VERY IMPORTANT — DO NOT USE THIS BROKEN PATTERN
+
+Do not continue relying on:
+
+```python
+await server.startup()
+```
+
+followed by:
+
+```python
+await server.shutdown()
+```
+
+to manually control Uvicorn's lifecycle if those methods depend on internal state that is not initialized.
+
+Use the appropriate supported Uvicorn execution path for the installed version, such as the normal `server.serve()` lifecycle or another officially supported mechanism.
+
+If the server needs to run in a background task/thread, structure that around the supported lifecycle rather than manually reproducing Uvicorn's internals.
+
+### BACKGROUND EXECUTION
+
+The Remote Control server must remain non-blocking.
+
+The AI Assistant desktop application must continue running normally.
+
+The desired architecture is:
+
+```text
+AI Assistant
+    │
+    ├── Desktop UI
+    │
+    ├── AI / Audio
+    │
+    └── Remote Control
+            └── Uvicorn
+                 └── 0.0.0.0:8001
+```
+
+Do not block the main application thread.
+
+### STARTUP
+
+When the application launches, I want to see:
+
+```text
+[REMOTE CONTROL] Starting dashboard server...
+```
+
+and then after Uvicorn successfully starts:
+
+```text
+[REMOTE CONTROL] Dashboard listening on 0.0.0.0:8001
+```
+
+Do not print the success message before the server has actually started.
+
+If startup fails, print:
+
+```text
+[REMOTE CONTROL] Dashboard startup FAILED: <actual exception>
+```
+
+### SHUTDOWN
+
+When the AI Assistant exits, shut down the Uvicorn server cleanly using the supported lifecycle mechanism.
+
+Do not manually access internal attributes such as:
+
+```python
+server.servers
+server.lifespan
+```
+
+unless they are legitimately part of the installed Uvicorn version's supported API.
+
+### HTTPS ALIAS
+
+The logs also show an optional HTTPS alias on:
+
+`8002`
+
+Do not break it.
+
+If the existing HTTPS alias uses the same broken Uvicorn lifecycle code, update it to use the same correct supported server lifecycle.
+
+Keep:
+
+* HTTP `8001`
+* HTTPS alias `8002`
+
+if those features already exist.
+
+### PYTHON 3.14 COMPATIBILITY
+
+The application is running with:
+
+```text
+Python 3.14
+```
+
+and the installed Uvicorn package is being used from:
+
+```text
+...Python\pythoncore-3.14-64\Lib\site-packages\uvicorn
+```
+
+Make the implementation compatible with the Uvicorn version actually installed in this environment.
+
+Do NOT blindly downgrade packages unless absolutely necessary.
+
+Prefer fixing the code to use the installed Uvicorn API correctly.
+
+### VERIFY
+
+After making the fix:
+
+1. Start the normal Windows application.
+2. Confirm the log shows:
+
+```text
+[REMOTE CONTROL] Starting dashboard server...
+```
+
+3. Confirm it reaches:
+
+```text
+[REMOTE CONTROL] Dashboard listening on 0.0.0.0:8001
+```
+
+4. Confirm there is NO:
+
+```text
+AttributeError: 'Server' object has no attribute 'lifespan'
+```
+
+5. Confirm there is NO:
+
+```text
+AttributeError: 'Server' object has no attribute 'servers'
+```
+
+6. Run:
+
+```bat
+netstat -ano | findstr :8001
+```
+
+It must show an actual listener.
+
+7. Test locally:
+
+```text
+http://127.0.0.1:8001
+```
+
+8. Test using LAN IP:
+
+```text
+http://192.168.100.17:8001
+```
+
+9. Test from the phone on the same LAN.
+
+10. Test the QR code.
+
+### DO NOT FINISH WITH A CODE-ONLY VERIFICATION
+
+Python syntax passing is NOT sufficient.
+
+The problem is a runtime Uvicorn lifecycle failure.
+
+The success condition is:
+
+```text
+Uvicorn starts successfully
+        ↓
+0.0.0.0:8001 LISTENING
+        ↓
+192.168.100.17:8001 loads
+        ↓
+Phone loads Remote Control
+        ↓
+QR code works
+```
+
+Fix the Uvicorn lifecycle crash and preserve the rest of the existing application.
