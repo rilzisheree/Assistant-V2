@@ -1,0 +1,155 @@
+Fix the top-center speaking orb so that it works as a **GLOBAL desktop overlay**, not an element restricted to the Project Zero application window.
+
+IMPORTANT:
+
+* Do NOT change or break the existing AI functionality.
+* Do NOT change voice recognition, TTS, commands, APIs, or assistant behavior.
+* Keep the existing main orb exactly as it is.
+* Keep the previously fixed slow/calm orb animation.
+* This change is specifically for the small speaking orb.
+
+### 1. GLOBAL SCREEN OVERLAY
+
+The small speaking orb must appear at the **top-center of the user's actual desktop screen**, not merely at the top-center of the Project Zero application window.
+
+It must be visible even when:
+
+* Project Zero is not focused
+* Project Zero is behind another application
+* The user is browsing the web
+* The user is playing a game
+* The user is using another application
+* The Project Zero window is minimized, if technically possible within the existing architecture
+
+The orb should behave like a lightweight **always-on-top desktop overlay**.
+
+It should not be contained inside the main application's window.
+
+### 2. EXACT SAME ORB
+
+The overlay must use the **exact same orb visual used by the main Project Zero interface**.
+
+Do NOT create a simplified replacement.
+
+Reuse the existing orb rendering/design wherever possible.
+
+The only difference should be its smaller size.
+
+It should retain:
+
+* Same core
+* Same internal geometry
+* Same dark/blue appearance
+* Same lighting
+* Same effects
+* Same visual language
+
+### 3. WHEN THE ORB APPEARS
+
+The orb should appear whenever the AI is **actually speaking through TTS**, regardless of which application currently has focus.
+
+Example:
+
+User is browsing Chrome.
+
+User talks to Project: Zero.
+
+Project: Zero processes the request.
+
+Project: Zero begins speaking.
+
+→ Small orb smoothly appears at the top-center of the desktop screen.
+
+→ Orb remains visible for the entire duration of the AI's spoken response.
+
+→ AI finishes speaking.
+
+→ Orb smoothly fades away.
+
+### 4. DO NOT DEPEND ON WINDOW FOCUS
+
+The speaking orb must NOT depend on:
+
+* Project Zero being focused
+* Project Zero being the active window
+* The Project Zero window being visible in front
+* Mouse position
+* Keyboard focus
+
+The trigger should be tied directly to the AI's **speech/TTS state**.
+
+Conceptually:
+
+AI TTS START
+→ GLOBAL ORB SHOW
+
+AI TTS ACTIVE
+→ GLOBAL ORB REMAINS
+
+AI TTS END
+→ GLOBAL ORB HIDE
+
+### 5. OVERLAY BEHAVIOR
+
+The overlay should:
+
+* Stay above normal application windows
+* Remain visually unobtrusive
+* Be positioned precisely at the horizontal center of the primary screen
+* Sit near the top edge with a small comfortable margin
+* Not steal keyboard focus
+* Not interfere with mouse/keyboard input
+* Not behave like a normal application window
+* Not appear in an annoying way in the taskbar if the platform allows a proper overlay implementation
+
+The user should still be able to interact normally with whatever application is underneath it.
+
+### 6. MULTI-MONITOR SAFETY
+
+If multiple monitors are connected, place the orb on the **currently active/primary display** using the application's existing screen/window detection logic.
+
+Do not randomly choose a monitor.
+
+### 7. ANIMATION
+
+Keep the orb's animation extremely subtle.
+
+On appearance:
+
+* Slight fade-in
+* Tiny scale-up
+* Very subtle blue illumination
+
+While speaking:
+
+* Gentle pulse
+* Very slow internal motion
+* No rapid spinning
+* No aggressive animation
+
+On completion:
+
+* Smooth fade-out
+* Tiny scale-down
+
+The orb must NEVER suddenly spin rapidly.
+
+### FINAL EXPERIENCE
+
+The intended experience is:
+
+I'm using another application.
+
+I say something to Project: Zero.
+
+Project: Zero responds.
+
+Even though Project: Zero isn't currently in front of me:
+
+**the small Project: Zero orb appears at the top-center of my screen and shows me that the AI is speaking.**
+
+When the AI stops talking:
+
+**the orb smoothly disappears.**
+
+It should feel like a true **desktop-level AI presence**, not a component trapped inside the Project Zero window.
