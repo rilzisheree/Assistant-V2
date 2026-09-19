@@ -1,0 +1,407 @@
+We are STILL getting the exact same problem.
+
+The latest result says:
+
+`ESCALATION TEST → CALL BUTTON CURSOR MOVED`
+
+`Messenger phone button coordinate was found and the cursor was moved to the measured PyAutoGUI coordinate. No click was attempted; physical visual alignment still requires inspection of the screen.`
+
+But physically, the cursor is STILL far away from the Messenger 📞 button.
+
+At this point, STOP trying to calculate or guess Messenger coordinates.
+
+The current implementation is fundamentally assuming that the coordinate returned from the visual detection corresponds to the physical Windows desktop. That assumption is clearly false.
+
+I want you to debug and FIX THE ACTUAL SCREEN COORDINATE PIPELINE.
+
+---
+
+# 1. TRACE THE ENTIRE PIPELINE
+
+Find the exact path from:
+
+`Windows screen`
+→ `screenshot capture`
+→ `screenshot preprocessing`
+→ `image resize`
+→ `Gemini / visual detection`
+→ `returned coordinates`
+→ `coordinate conversion`
+→ `PyAutoGUI`
+→ `physical cursor`
+
+Do not just inspect the Messenger escalation code.
+
+Find the actual shared implementation of:
+
+* screenshot capture
+* screen_find
+* screen_click
+* coordinate conversion
+* PyAutoGUI mouse movement
+
+Determine exactly where coordinates change.
+
+---
+
+# 2. IMPORTANT: GEMINI MAY BE SEEING A RESIZED IMAGE
+
+This is one of the most important things to investigate.
+
+If the original screenshot is:
+
+`1920 × 1080`
+
+but the image sent to Gemini is resized to something like:
+
+`1280 × 720`
+
+then Gemini's returned coordinates are NOT directly usable as PyAutoGUI coordinates.
+
+For example:
+
+Original:
+
+`1920 × 1080`
+
+AI image:
+
+`1280 × 720`
+
+AI detects:
+
+`X=1000, Y=100`
+
+That is NOT:
+
+`PyAutoGUI(1000,100)`
+
+It must be mapped back to the original screenshot coordinate space.
+
+Find out whether ANY resizing, thumbnailing, compression, scaling, cropping, browser screenshot processing, or image conversion happens before the visual model receives the image.
+
+Log BOTH:
+
+`ORIGINAL SCREENSHOT = WxH`
+
+and
+
+`IMAGE SENT TO VISION MODEL = WxH`
+
+If they differ, calculate the transformation from the actual measured dimensions.
+
+DO NOT hardcode a scale factor.
+
+---
+
+# 3. NEVER USE AI-IMAGE COORDINATES DIRECTLY
+
+If Gemini receives a resized image, its coordinate is in the resized image's coordinate system.
+
+The proper pipeline must be:
+
+`AI coordinate`
+→ `original screenshot coordinate`
+→ `desktop coordinate`
+→ `PyAutoGUI`
+
+For uniform scaling:
+
+`original_x = ai_x × original_width / ai_width`
+
+`original_y = ai_y × original_height / ai_height`
+
+But if there is cropping, padding, letterboxing, or aspect-ratio changes, account for those too.
+
+DO NOT blindly use the formula.
+
+Measure what the actual code does.
+
+---
+
+# 4. CHECK DPI / WINDOWS DISPLAY SCALING
+
+Explicitly detect Windows display scaling.
+
+Check whether Windows is running at:
+
+* 100%
+* 125%
+* 150%
+* 175%
+* etc.
+
+Also determine whether the Python/PyAutoGUI process is DPI-aware.
+
+This is critical because Windows can expose logical coordinates while screenshots use physical pixels.
+
+If necessary, make the Python process explicitly DPI-aware BEFORE creating the GUI/screenshot environment.
+
+Do not simply multiply coordinates by 1.25 or 1.5.
+
+Determine the actual coordinate spaces first.
+
+---
+
+# 5. CHECK PYAutoGUI COORDINATE SPACE
+
+Run a diagnostic:
+
+`pyautogui.size()`
+
+Then capture a screenshot and print:
+
+`screenshot.size`
+
+Then compare them.
+
+Example:
+
+`PyAutoGUI: 1920x1080`
+`Screenshot: 1920x1080`
+
+If these match, they should normally correspond to the same physical desktop coordinate space.
+
+If they do NOT match, identify why.
+
+Also log:
+
+`pyautogui.position()`
+
+immediately after every mouse move.
+
+---
+
+# 6. CHECK WHETHER THE SCREENSHOT IS CROPPED
+
+Search the screenshot pipeline for anything resembling:
+
+* crop
+* region
+* bbox
+* monitor region
+* window capture
+* browser viewport
+* screenshot region
+* resize
+* thumbnail
+* scale
+* offset
+
+If the screenshot represents only part of the desktop, its `(0,0)` is NOT the physical desktop `(0,0)`.
+
+The desktop coordinate must include the screenshot's actual physical origin.
+
+For example:
+
+`desktop_x = screenshot_origin_x + screenshot_x`
+
+`desktop_y = screenshot_origin_y + screenshot_y`
+
+But only if the screenshot is actually cropped.
+
+Do not assume.
+
+---
+
+# 7. MULTI-MONITOR SUPPORT
+
+Check whether Windows has multiple displays.
+
+Do not assume the primary monitor is the entire coordinate space.
+
+Log:
+
+* number of monitors
+* each monitor's physical resolution
+* each monitor's position
+* primary monitor
+* virtual desktop bounds
+
+Make sure screenshot coordinates and PyAutoGUI coordinates refer to the same virtual desktop.
+
+If Messenger is on monitor 2, this matters.
+
+---
+
+# 8. F11 STAYS
+
+Keep F11 fullscreen.
+
+The flow should remain:
+
+`Open Messenger`
+→ `Direct URL`
+→ `F11`
+→ `Wait`
+→ `Fresh screenshot`
+→ `Visual detection`
+
+But F11 is NOT the coordinate fix by itself.
+
+It simply gives us a more stable browser layout.
+
+---
+
+# 9. DO NOT USE A HARDcoded OFFSET
+
+Absolutely do NOT do something like:
+
+`x -= 100`
+`y -= 50`
+
+or:
+
+`x *= 1.25`
+
+or:
+
+`x += 200`
+
+That would only hide the underlying bug.
+
+The conversion must be based on measured coordinate spaces.
+
+---
+
+# 10. CREATE A REAL DIAGNOSTIC MODE
+
+For the next Test Escalation, do NOT click the phone button.
+
+Instead produce a diagnostic log containing:
+
+`=== SCREEN COORDINATE DIAGNOSTIC ===`
+
+`Windows DPI scale:`
+`Process DPI aware:`
+`Monitor count:`
+`Virtual desktop bounds:`
+`Primary monitor:`
+
+`PyAutoGUI size:`
+`Screenshot size:`
+`Vision image size:`
+
+`Screenshot crop/origin:`
+`Browser window position:`
+`Browser window size:`
+
+`AI detected coordinate:`
+`Converted screenshot coordinate:`
+`Final desktop coordinate:`
+
+`Requested PyAutoGUI position:`
+`Actual PyAutoGUI cursor position:`
+
+And importantly:
+
+`Coordinate transformation applied:`
+
+Explain exactly what transformations happened.
+
+---
+
+# 11. ADD A FULL-SCREEN CALIBRATION TEST
+
+Before Messenger detection, perform a calibration test.
+
+Move the cursor to known desktop coordinates:
+
+`(0,0)`
+`(screen_width/2, screen_height/2)`
+`(screen_width-1, screen_height-1)`
+
+Capture screenshots at each stage.
+
+This allows you to verify whether PyAutoGUI and screenshot pixels actually represent the same coordinate system.
+
+Do NOT click anything.
+
+If the cursor visually appears somewhere other than the expected location, the problem is below the Messenger layer and must be fixed there.
+
+---
+
+# 12. IMPORTANT CHANGE TO "POSITIONED"
+
+The application MUST NOT report:
+
+`CALL BUTTON CURSOR MOVED`
+
+as if that means the button was successfully positioned.
+
+That only means:
+
+`PyAutoGUI.moveTo()` executed.
+
+Use clearer logging:
+
+`CALL BUTTON DETECTED`
+`CALL BUTTON COORDINATE CONVERTED`
+`CURSOR MOVED`
+
+Only report:
+
+`CALL BUTTON CURSOR ALIGNED`
+
+after the coordinate pipeline has been proven correct.
+
+---
+
+# 13. AFTER THE DIAGNOSTIC IS FIXED
+
+Once the cursor physically lands directly over the Messenger 📞 button:
+
+Restore the normal flow:
+
+`Detect`
+→ `Convert`
+→ `Move`
+→ `Click`
+→ `Verify call initiated`
+→ `Verify call connected`
+→ `Start Gemini voice`
+
+Do NOT start Gemini before the call is actually connected.
+
+---
+
+# 14. DO NOT REWRITE THE WHOLE APP
+
+Fix the underlying coordinate-space problem.
+
+Reuse the existing:
+
+* computer_control
+* screen_find
+* screen_click
+* PyAutoGUI
+* browser control
+* screenshot system
+* Messenger direct URL
+* F11 fullscreen
+* Activity Log
+
+Do not create a second automation framework.
+
+Do not break:
+
+* reminders
+* recurring reminders
+* cancellation
+* WhatsApp escalation
+* Messenger escalation
+* Gemini
+* Telegram
+* file uploads
+* existing plugins
+* existing computer-control functionality
+
+The only objective right now is:
+
+**Make a coordinate obtained from the visual system correspond to the physical Windows cursor correctly.**
+
+The current behavior proves that this correspondence is broken.
+
+Do not continue adding offsets.
+
+Find where the coordinate space changes and fix it at the source.
