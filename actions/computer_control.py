@@ -117,6 +117,7 @@ def _windows_display_diagnostics() -> dict:
     """Return measured Windows display geometry without guessing a scale factor."""
     result = {
         "dpi_scale": "not-applicable",
+        "active_window_dpi": None,
         "process_dpi_aware": _DPI_AWARENESS,
         "monitor_count": None,
         "monitors": [],
@@ -130,6 +131,13 @@ def _windows_display_diagnostics() -> dict:
         user32 = ctypes.windll.user32
         dpi = int(user32.GetDpiForSystem()) if hasattr(user32, "GetDpiForSystem") else 96
         result["dpi_scale"] = f"{dpi} DPI ({dpi / 96:.0%})"
+        if hasattr(user32, "GetDpiForWindow") and hasattr(user32, "GetForegroundWindow"):
+            hwnd = user32.GetForegroundWindow()
+            if hwnd:
+                active_dpi = int(user32.GetDpiForWindow(hwnd))
+                result["active_window_dpi"] = (
+                    f"{active_dpi} DPI ({active_dpi / 96:.0%})"
+                )
         result["virtual_desktop_bounds"] = {
             "left": int(user32.GetSystemMetrics(76)),   # SM_XVIRTUALSCREEN
             "top": int(user32.GetSystemMetrics(77)),    # SM_YVIRTUALSCREEN

@@ -623,19 +623,25 @@ def start_messenger_call_verified(
         print("MESSENGER_SCREEN_CAPTURED coordinate_reference=fullscreen")
         from actions.computer_control import _click, _run_coordinate_calibration
 
+        calibration = _run_coordinate_calibration() if diagnostic else None
         coords, _mapping = _find_messenger_call_button(diagnostic=diagnostic)
         if not coords:
             return {
                 "connected": False,
                 "state": "CALL_BUTTON_NOT_FOUND",
                 "detail": "Messenger voice-call button could not be visually identified.",
+                "diagnostics": {
+                    **fullscreen_diagnostics,
+                    **_mapping,
+                    "calibration": calibration,
+                },
             }
         print(f"MESSENGER_CALL_BUTTON_FOUND coordinates={coords}")
         cursor_before = pyautogui.position()
         if diagnostic:
-            calibration = _run_coordinate_calibration()
             print("=== SCREEN COORDINATE DIAGNOSTIC ===")
             print(f"Windows DPI scale: {_mapping.get('display_diagnostics', {}).get('dpi_scale', 'unavailable')}")
+            print(f"Active window DPI: {_mapping.get('display_diagnostics', {}).get('active_window_dpi', 'unavailable')}")
             print(f"Process DPI aware: {_mapping.get('windows_dpi_awareness', 'unavailable')}")
             print(f"Monitor count: {_mapping.get('display_diagnostics', {}).get('monitor_count', 'unavailable')}")
             print(f"Virtual desktop bounds: {_mapping.get('display_diagnostics', {}).get('virtual_desktop_bounds', 'unavailable')}")
@@ -665,7 +671,7 @@ def start_messenger_call_verified(
             )
             print(f"Current cursor X/Y: ({cursor_before[0]}, {cursor_before[1]})")
             print(
-                "Requested PyAutoGUI coordinate: "
+                "Requested PyAutoGUI position: "
                 f"({coords[0]}, {coords[1]})"
             )
             pyautogui.moveTo(coords[0], coords[1], duration=0.3)
