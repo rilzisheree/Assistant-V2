@@ -773,6 +773,9 @@ class JarvisLive:
                 True,
             )
             detail = str(result.get("detail", result))
+            if result.get("state") == "CALL_BUTTON_HOVERED":
+                self._test_progress("CALL BUTTON POSITIONED", detail)
+                return
             if result.get("connected") is not True:
                 self._test_progress("FAILED", f"Messenger call was not verified: {detail}")
                 return

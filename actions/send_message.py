@@ -1,9 +1,29 @@
 import json
 import io
+import platform
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+def _enable_windows_dpi_awareness() -> str:
+    """Set DPI awareness before this module imports PyAutoGUI."""
+    if platform.system() != "Windows":
+        return "not-applicable"
+    try:
+        import ctypes
+
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return "per-monitor aware"
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+            return "system aware (fallback)"
+        except Exception:
+            return "unavailable"
+
+
+_DPI_AWARENESS = _enable_windows_dpi_awareness()
 
 try:
     import pyautogui
@@ -205,36 +225,49 @@ def _active_window_dimensions() -> str:
     return "unavailable"
 
 
-def _find_messenger_call_button(diagnostic: bool = False) -> tuple[int, int] | None:
+def _windows_dpi_scaling() -> str:
+    if platform.system() != "Windows":
+        return "not-applicable"
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        system_dpi = int(user32.GetDpiForSystem()) if hasattr(user32, "GetDpiForSystem") else 96
+        return f"{system_dpi} DPI ({system_dpi / 96:.0%})"
+    except Exception:
+        return "unavailable"
+
+
+def _find_messenger_call_button(
+    diagnostic: bool = False,
+) -> tuple[tuple[int, int] | None, dict]:
     """Find the phone icon in the loaded Messenger conversation header."""
     from actions.computer_control import _screen_find
 
-    screenshot = pyautogui.screenshot() if diagnostic else None
-    if diagnostic:
-        screen_width, screen_height = pyautogui.size()
-        screenshot_width, screenshot_height = screenshot.size
-        print("CALL BUTTON DETECTION")
-        print(f"Window: {_active_window_dimensions()}")
-        print(
-            f"Screen: {screen_width}x{screen_height}; "
-            f"Screenshot: {screenshot_width}x{screenshot_height}"
-        )
-
-    coords = _screen_find(
+    result = _screen_find(
         "the phone handset voice-call button in the Messenger conversation "
         "header. It must be the audio/voice call control for the open DM. "
         "Do not select the video camera button, search button, conversation "
-        "options button, back button, profile button, or any browser control."
+        "options button, back button, profile button, or any browser control.",
+        return_diagnostics=diagnostic,
     )
+    if diagnostic and isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
+        coords, metadata = result
+    else:
+        coords, metadata = result, {}
 
     if diagnostic:
-        print(
-            "Detected: "
-            + (f"({coords[0]}, {coords[1]})" if coords else "NOT_FOUND")
-        )
+        print("CALL BUTTON DETECTION")
+        print(f"Physical screen size: {metadata.get('physical_screen_size', 'unavailable')}")
+        print(f"Screenshot size: {metadata.get('screenshot_size', 'unavailable')}")
+        print(f"Messenger window position/size: {_active_window_dimensions()}")
+        print(f"Screenshot crop/offset: {metadata.get('screenshot_crop_offset', 'unavailable')}")
+        print(f"Detected button X/Y: {metadata.get('raw_coordinates', 'NOT_FOUND')}")
+        print(f"Final PyAutoGUI click X/Y: {metadata.get('final_coordinates', 'NOT_FOUND')}")
+        print(f"Windows DPI scaling: {_windows_dpi_scaling()}")
         if not coords:
             print("Messenger voice-call button could not be visually identified")
-    return coords
+    return coords, metadata
 
 
 def send_whatsapp_verified(receiver: str, message: str) -> dict:
@@ -431,7 +464,7 @@ def start_messenger_call_verified(
 
         from actions.computer_control import _click
 
-        coords = _find_messenger_call_button(diagnostic=diagnostic)
+        coords, _mapping = _find_messenger_call_button(diagnostic=diagnostic)
         if not coords:
             return {
                 "connected": False,
@@ -440,8 +473,19 @@ def start_messenger_call_verified(
             }
         cursor_before = pyautogui.position()
         if diagnostic:
-            print(f"Cursor before click: ({cursor_before[0]}, {cursor_before[1]})")
-            print(f"Clicking center of detected button: ({coords[0]}, {coords[1]})")
+            print(f"Current cursor X/Y: ({cursor_before[0]}, {cursor_before[1]})")
+            pyautogui.moveTo(coords[0], coords[1], duration=0.3)
+            time.sleep(0.7)
+            cursor_moved = pyautogui.position()
+            print(f"Cursor moved to: ({cursor_moved[0]}, {cursor_moved[1]})")
+            return {
+                "connected": None,
+                "state": "CALL_BUTTON_HOVERED",
+                "detail": (
+                    "Messenger phone button located and the cursor was moved "
+                    "to its calculated final coordinate. No click was attempted."
+                ),
+            }
         click_attempted = False
         try:
             _click(x=coords[0], y=coords[1])

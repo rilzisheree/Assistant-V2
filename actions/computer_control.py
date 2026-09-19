@@ -6,6 +6,7 @@ import re
 import string
 import subprocess
 import sys
+import ctypes
 
 if platform.system() == "Windows":
     _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
@@ -14,6 +15,23 @@ else:
 import time
 import random
 from pathlib import Path
+
+def _enable_windows_dpi_awareness() -> str:
+    """Keep screenshots and mouse coordinates in the same Windows space."""
+    if platform.system() != "Windows":
+        return "not-applicable"
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # per-monitor aware
+        return "per-monitor aware"
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+            return "system aware (fallback)"
+        except Exception:
+            return "unavailable"
+
+
+_DPI_AWARENESS = _enable_windows_dpi_awareness()
 
 try:
     import pyautogui
@@ -310,25 +328,31 @@ def _focus_window(title: str) -> str:
 
     return f"focus_window: unknown OS '{os_name}'"
 
-def _screen_find(description: str) -> tuple[int, int] | None:
+def _screen_find(
+    description: str,
+    *,
+    return_diagnostics: bool = False,
+) -> tuple[int, int] | tuple[tuple[int, int] | None, dict] | None:
     api_key = _get_api_key()
     if not api_key:
         print("[ComputerControl] ⚠️ No API key for screen_find")
-        return None
+        return (None, {}) if return_diagnostics else None
 
     try:
         from google import genai
         from google.genai import types as gtypes
 
         _require_pyautogui()
-        w, h  = pyautogui.size()
-        img   = pyautogui.screenshot()
+        screen_size = tuple(int(value) for value in pyautogui.size())
+        img = pyautogui.screenshot()
+        screenshot_size = tuple(int(value) for value in img.size)
         buf   = io.BytesIO()
         img.save(buf, format="PNG")
         image_bytes = buf.getvalue()
 
         prompt = (
-            f"This is a screenshot of a {w}×{h} pixel screen. "
+            f"This is a full-desktop screenshot measuring "
+            f"{screenshot_size[0]}×{screenshot_size[1]} pixels with origin (0,0). "
             f"Locate the UI element described as: '{description}'. "
             f"Reply with ONLY the center coordinates as: x,y "
             f"If the element is not visible, reply: NOT_FOUND"
@@ -344,11 +368,33 @@ def _screen_find(description: str) -> tuple[int, int] | None:
 
         text = (response.text or "").strip()
         if "NOT_FOUND" in text.upper():
-            return None
+            coords = None
+        else:
+            match = re.search(r"(\d+)\s*,\s*(\d+)", text)
+            coords = (int(match.group(1)), int(match.group(2))) if match else None
 
-        match = re.search(r"(\d+)\s*,\s*(\d+)", text)
-        if match:
-            return int(match.group(1)), int(match.group(2))
+        raw_coords = coords
+        if coords and screenshot_size != screen_size:
+            # The model reports pixels in the image it saw. Convert using the
+            # two dimensions observed at runtime; never use a fixed multiplier.
+            sx = screen_size[0] / screenshot_size[0]
+            sy = screen_size[1] / screenshot_size[1]
+            coords = (round(coords[0] * sx), round(coords[1] * sy))
+
+        diagnostics = {
+            "physical_screen_size": screenshot_size,
+            "pyautogui_screen_size": screen_size,
+            "screenshot_size": screenshot_size,
+            "screenshot_crop_offset": (0, 0),
+            "raw_coordinates": raw_coords,
+            "final_coordinates": coords,
+            "coordinate_scale": (
+                screen_size[0] / screenshot_size[0],
+                screen_size[1] / screenshot_size[1],
+            ),
+            "windows_dpi_awareness": _DPI_AWARENESS,
+        }
+        return (coords, diagnostics) if return_diagnostics else coords
 
     except Exception as e:
         print(f"[ComputerControl] ⚠️ screen_find failed: {e}")

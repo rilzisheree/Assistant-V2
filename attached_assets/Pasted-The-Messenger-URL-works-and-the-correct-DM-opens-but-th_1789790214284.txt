@@ -1,0 +1,145 @@
+The Messenger URL works and the correct DM opens, but the call-button click is STILL consistently landing far up/left of the actual 📞 button.
+
+This means I do NOT want another attempt at guessing the button coordinates.
+
+I strongly suspect a coordinate-space mismatch between screenshot detection and PyAutoGUI mouse coordinates.
+
+## STOP changing the call-button location
+
+Do not add another hardcoded coordinate.
+
+Do not randomly adjust X/Y.
+
+Do not multiply coordinates by arbitrary scaling factors.
+
+Instead, trace the exact coordinate pipeline.
+
+I need you to inspect the existing implementation of:
+
+* screenshot capture
+* `screen_find`
+* `screen_click`
+* PyAutoGUI mouse movement
+* any browser/window coordinate conversion
+* DPI/scaling handling
+* screenshot cropping
+* window offsets
+
+Determine whether the coordinates returned by visual detection are:
+
+1. Full desktop/screen coordinates
+2. Window-relative coordinates
+3. Screenshot-relative coordinates
+4. Browser viewport coordinates
+5. Coordinates affected by DPI scaling
+
+Then make the smallest fix necessary so the coordinate system is consistent.
+
+## DEBUG REQUIREMENT
+
+For the Test Escalation button only, log all of these immediately before clicking:
+
+```text
+Physical screen size:
+Screenshot size:
+Messenger window position:
+Messenger window size:
+Screenshot crop/offset:
+Detected button X/Y:
+Final PyAutoGUI click X/Y:
+Current cursor X/Y:
+Windows DPI scaling:
+```
+
+Then move the cursor to the calculated final click coordinate WITHOUT clicking first.
+
+Pause briefly and log:
+
+```text
+Cursor moved to:
+```
+
+This is important because I can visually watch where the cursor goes.
+
+If the detected button is visually around the Messenger header but the cursor goes far up/left, the log should make the coordinate transformation error obvious.
+
+## IMPORTANT
+
+Do NOT modify the Messenger URL.
+
+It is already working:
+
+https://www.messenger.com/e2ee/t/7721188384660930
+
+The only broken part is coordinate mapping for the call-button click.
+
+## ALSO CHECK THIS
+
+Inspect whether the project is using:
+
+```python
+pyautogui.screenshot()
+```
+
+and then passing coordinates from that screenshot directly into:
+
+```python
+pyautogui.click(x, y)
+```
+
+If so, verify that the screenshot and PyAutoGUI use the exact same coordinate space.
+
+Also check Windows display scaling / DPI awareness.
+
+If Windows is running at 125%, 150%, etc., make sure screenshot coordinates and mouse coordinates are normalized correctly.
+
+Do NOT blindly compensate with a hardcoded multiplier. Detect the actual scaling/coordinate relationship.
+
+## EXISTING SCREEN_FIND / SCREEN_CLICK
+
+If `screen_find` and `screen_click` already have coordinate conversion logic, do not create another conversion layer.
+
+Fix the existing conversion at its source so all existing screen-control functionality benefits from the correction.
+
+However, make sure this does not break existing computer-control functionality.
+
+## TEMPORARY TEST
+
+For now, Test Escalation should:
+
+1. Open the Messenger URL.
+2. Detect the 📞 button.
+3. Calculate coordinates.
+4. Move the mouse to the calculated position.
+5. DO NOT click automatically yet.
+6. Log the coordinate information.
+
+I want to visually confirm that the cursor lands directly on the phone icon.
+
+Once the cursor reliably lands on the actual 📞 button, then restore the click.
+
+Do not proceed to Gemini voice until the physical click is confirmed working.
+
+## DO NOT CHANGE
+
+Do not modify:
+
+* WhatsApp
+* Reminder system
+* Daily/weekly scheduling
+* Escalation timing
+* Baba response detection
+* Messenger URL
+* Gemini
+* Activity Log
+* Cancellation
+* Test Escalation architecture
+
+Fix the coordinate mapping only.
+
+Afterward, tell me:
+
+1. What coordinate space the detector was returning.
+2. What coordinate space PyAutoGUI expected.
+3. What caused the upper-left offset.
+4. What exact fix was applied.
