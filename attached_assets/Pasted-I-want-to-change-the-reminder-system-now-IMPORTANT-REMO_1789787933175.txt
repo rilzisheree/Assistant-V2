@@ -1,0 +1,556 @@
+I want to change the reminder system now.
+
+## IMPORTANT: REMOVE THE OLD TEST MODE
+
+The current reminder escalation test system is no longer needed.
+
+Completely remove the old test-mode mechanism that is causing the system to automatically send repeated test messages every minute.
+
+Remove things such as:
+
+* `REMINDER_ESCALATION_TEST_MODE`
+* Any automatic test reminder loops
+* Any hardcoded "test" reminder that repeatedly triggers
+* Any test-mode behavior that automatically sends WhatsApp messages
+* Any test-only timers/schedulers
+* Any test-specific escalation paths
+
+Do NOT remove the actual reminder escalation functionality.
+
+The real reminder system and real escalation system must remain intact.
+
+Also fix the existing cancellation behavior if the old test mode has left behind any scheduled/persisted test reminders. Make sure old test reminders cannot continue running after this change.
+
+---
+
+# NEW: REMINDERS TAB IN SETTINGS
+
+Add a new **Reminders** tab/section inside the existing application Settings UI.
+
+Do NOT create a separate window or separate reminder application.
+
+Use the existing Settings interface and match the existing Project Zero design.
+
+The UI should feel like it belongs naturally inside the current app.
+
+### Design
+
+Keep the existing Project Zero aesthetic:
+
+* Dark
+* Premium
+* Futuristic
+* Compact
+* High information density
+* Minimal wasted space
+* Subtle blue energy/accent styling
+* Clean typography
+* No giant cards
+* No excessive neon
+* No unnecessary animations
+* No huge empty areas
+
+Do not redesign the entire Settings UI.
+
+Only add the new Reminders section and any components required for it.
+
+---
+
+# REMINDERS SETTINGS
+
+The Reminders tab should allow me to create and manage reminders directly.
+
+Include:
+
+### Reminder creation
+
+A compact reminder creation form with:
+
+**Reminder**
+
+* Text/input describing what I want to be reminded about.
+
+**Time**
+
+* Time picker.
+
+**Schedule**
+Options:
+
+* Once
+* Daily
+* Weekly
+
+For Weekly, allow selecting the day(s) of the week.
+
+Examples:
+
+```text
+Take medication
+Every day
+9:00 AM
+```
+
+or:
+
+```text
+Call Dad
+Every Sunday
+7:00 PM
+```
+
+or:
+
+```text
+Submit assignment
+Once
+Tomorrow at 8:00 PM
+```
+
+Use the existing reminder backend/scheduler rather than creating a second scheduling system.
+
+---
+
+# REMINDER LIST
+
+Below the creation form, display existing reminders.
+
+Each reminder should show compactly:
+
+* Reminder text
+* Schedule
+* Next trigger time
+* Enabled/disabled state
+* Escalation enabled/disabled
+
+Provide controls to:
+
+* Enable/disable
+* Edit
+* Delete
+
+Do not clutter the interface.
+
+---
+
+# ESCALATION SETTINGS
+
+When creating/editing a reminder, provide an optional:
+
+**Escalation**
+
+Toggle:
+
+`Enable escalation`
+
+When disabled:
+
+The reminder behaves exactly like a normal reminder.
+
+When enabled:
+
+Use the existing escalation system that was already implemented.
+
+Do NOT create another escalation engine.
+
+The existing escalation flow remains:
+
+```text
+Reminder triggers
+        ↓
+Wait for acknowledgement
+        ↓
+If acknowledged
+        ↓
+STOP
+        ↓
+If not acknowledged
+        ↓
+WhatsApp → Baba
+        ↓
+Wait for Baba response
+        ↓
+If response
+        ↓
+STOP
+        ↓
+If no response
+        ↓
+Messenger Web → شريف كمال
+        ↓
+Voice call
+        ↓
+Gemini voice
+```
+
+The existing escalation configuration should remain reusable.
+
+---
+
+# NEW: "TEST ESCALATION" BUTTON
+
+This is the most important part.
+
+Inside the Reminders settings tab, add a clearly visible button:
+
+**Test Escalation**
+
+This replaces the old test-mode system completely.
+
+There should be NO environment variable and NO background test loop.
+
+The button manually starts one controlled test run.
+
+---
+
+# INSTANT TEST MODE
+
+When I click:
+
+**Test Escalation**
+
+the system should run the entire escalation workflow immediately.
+
+I should NOT have to:
+
+* Wait one minute
+* Wait fifteen minutes
+* Wait for a scheduled reminder
+* Wait for the escalation timeout
+* Wait between WhatsApp and Messenger
+* Create a fake reminder
+* Enable an environment variable
+
+The test button should intentionally bypass all waiting periods.
+
+### Test sequence
+
+When I click the button:
+
+```text
+TEST START
+    ↓
+Simulate reminder trigger
+    ↓
+Simulate reminder not acknowledged
+    ↓
+Open WhatsApp
+    ↓
+Find Baba
+    ↓
+Send the configured escalation message
+    ↓
+Verify message was sent
+    ↓
+Immediately continue
+    ↓
+Simulate Baba not responding
+    ↓
+Open Messenger Web
+    ↓
+Find شريف كمال
+    ↓
+Initiate call
+    ↓
+Verify call connection
+    ↓
+Start Gemini voice session if available
+    ↓
+TEST COMPLETE
+```
+
+There should be **zero artificial waiting periods** between these steps.
+
+The test should invoke the same real functions used by production escalation.
+
+Do NOT create fake implementations of:
+
+* WhatsApp
+* Messenger
+* Browser control
+* Computer control
+* Gemini
+* Audio
+
+The test button should simply tell the existing escalation engine:
+
+> Run this escalation immediately with all waiting/timeout gates bypassed.
+
+---
+
+# IMPORTANT: TEST MUST NOT CREATE A REAL RECURRING REMINDER
+
+Clicking Test Escalation must create a temporary in-memory/test execution only.
+
+It must NOT:
+
+* Create a daily reminder
+* Create a weekly reminder
+* Add a persistent reminder
+* Schedule anything in Windows
+* Create a repeating timer
+* Leave anything running afterward
+
+After the test finishes, everything related to the test should be cleaned up.
+
+---
+
+# TEST CONFIRMATION
+
+Because clicking this button can send a real WhatsApp message and potentially make a real Messenger call, add a small confirmation before starting.
+
+Example:
+
+**Run Escalation Test?**
+
+This will immediately open WhatsApp, message Baba, and attempt the Messenger escalation without waiting for normal reminder timeouts.
+
+Buttons:
+
+**Cancel**
+**Run Test**
+
+Do not show this confirmation every time if there is already an established confirmation mechanism in the app, but there MUST be some protection against accidental clicks.
+
+---
+
+# TEST PROGRESS UI
+
+While the test is running, show a compact progress indicator inside the Reminders settings page.
+
+For example:
+
+```text
+ESCALATION TEST
+
+✓ Reminder triggered
+✓ Acknowledgement bypassed
+✓ WhatsApp opened
+✓ Baba found
+✓ Message sent
+✓ Response timeout bypassed
+→ Opening Messenger
+○ Call
+○ Gemini Voice
+```
+
+Update each stage as it happens.
+
+If something fails:
+
+```text
+✕ Messenger contact not found
+```
+
+and clearly show the reason.
+
+Do not falsely mark a step as successful.
+
+---
+
+# VERY IMPORTANT: NO DELAYS
+
+The test button is specifically designed to test the complete pipeline without waiting.
+
+Production behavior must remain unchanged.
+
+For example:
+
+Production:
+
+```text
+Reminder
+↓
+15 minute acknowledgement timeout
+↓
+WhatsApp
+↓
+15 minute Baba response timeout
+↓
+Messenger
+```
+
+Test:
+
+```text
+Button clicked
+↓
+Reminder simulated
+↓
+Acknowledgement bypassed
+↓
+WhatsApp immediately
+↓
+Response timeout bypassed
+↓
+Messenger immediately
+```
+
+Do NOT change the real production timeout values.
+
+---
+
+# TEST SAFETY
+
+The test must still use the actual:
+
+* WhatsApp contact `Baba`
+* Existing Egyptian Arabic escalation message
+* Messenger contact `شريف كمال`
+* Existing computer control
+* Existing browser control
+* Existing Gemini integration
+* Existing Activity Log
+
+Do not create mock contacts.
+
+Do not create fake browser pages.
+
+Do not create fake WhatsApp behavior.
+
+The purpose of this button is to test the actual integration.
+
+---
+
+# ACTIVITY LOG
+
+Use the existing Activity Log.
+
+Do NOT create another logging system.
+
+The test should clearly identify itself:
+
+```text
+[ESCALATION TEST]
+WhatsApp message sent to Baba
+```
+
+etc.
+
+When the test finishes:
+
+```text
+[ESCALATION TEST]
+Completed
+```
+
+or:
+
+```text
+[ESCALATION TEST]
+Failed: Messenger call could not be verified
+```
+
+---
+
+# CANCELLATION
+
+Fix the existing cancellation system while doing this.
+
+Cancellation should work for real production reminders and escalations.
+
+It should recognize commands such as:
+
+* "Cancel that reminder"
+* "Cancel the reminder"
+* "Cancel the Baba escalation"
+* "Stop the escalation"
+
+When cancellation happens:
+
+* Cancel pending timers
+* Stop escalation monitoring
+* Prevent future WhatsApp escalation
+* Prevent Messenger escalation
+* Stop/close Gemini voice session if active
+* Persist the cancelled state
+* Update Activity Log
+
+Do not leave orphaned timers or background tasks.
+
+---
+
+# PERSISTENCE
+
+Daily and weekly reminders must survive application restarts.
+
+Use the existing reminder persistence system if one already exists.
+
+Do NOT create a second database or persistence mechanism unless absolutely necessary.
+
+On application startup:
+
+* Restore enabled reminders
+* Restore their schedules
+* Restore escalation configuration
+* Do not resurrect cancelled reminders
+* Do not resurrect old test-mode reminders
+
+---
+
+# CRITICAL REGRESSION PROTECTION
+
+Do not break anything that already works.
+
+Especially preserve:
+
+* Normal reminders
+* Existing reminder notifications
+* Existing acknowledgement behavior
+* Existing escalation system
+* WhatsApp automation
+* Messenger automation
+* Browser control
+* Computer control
+* Gemini integration
+* Activity Log
+* File uploads
+* Telegram
+* Remote control
+* Existing plugins/actions
+* Existing Settings functionality
+
+Do not replace existing systems when extending them.
+
+---
+
+# IMPLEMENTATION APPROACH
+
+Before changing anything:
+
+Inspect the current:
+
+* Reminder implementation
+* Reminder persistence
+* Scheduler/background loop
+* Escalation manager
+* WhatsApp automation
+* Messenger automation
+* Gemini integration
+* Settings UI
+* Activity Log
+* Cancellation handling
+
+Then make the smallest clean changes necessary.
+
+Prefer extending the existing reminder/escalation architecture rather than rewriting it.
+
+After implementation, check for:
+
+* Duplicate schedulers
+* Orphaned timers
+* Repeating test tasks
+* Persisted test reminders
+* Duplicate WhatsApp sends
+* Duplicate Messenger calls
+* UI regressions
+
+The final result should be:
+
+**Settings → Reminders**
+
+where I can manage my daily/weekly/one-time reminders and manually click **Test Escalation** whenever I want to test the complete system instantly.
+
+Most importantly:
+
+**REMOVE THE OLD AUTOMATIC TEST MODE COMPLETELY.**
