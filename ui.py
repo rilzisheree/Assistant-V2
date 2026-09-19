@@ -4449,11 +4449,6 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, "_header") and hasattr(self, "_title_lbl"):
-            # The title spans the whole header instead of the leftover space
-            # between the unequal left and right tool groups.
-            self._title_lbl.setGeometry(0, 1, self._header.width(), 56)
-            self._title_lbl.raise_()
         cw = self.centralWidget()
         if self._overlay and self._overlay.isVisible():
             ow, oh = 460, 390
@@ -5125,24 +5120,12 @@ class MainWindow(QMainWindow):
         lay.addWidget(self._monitor_btn)
         lay.addStretch()
 
-        self._title_lbl = QLabel("Project: Zero")
-        self._title_lbl.setParent(w)
-        self._title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont("Avenir Next", 15, QFont.Weight.Medium)
-        title_font.setStyleHint(QFont.StyleHint.SansSerif)
-        title_font.setStretch(105)
-        title_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.8)
-        self._title_lbl.setFont(title_font)
-        self._title_lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         self._sub_lbl = QLabel("")
         self._sub_lbl.setParent(w)
         self._sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub_lbl.setFont(QFont("Courier New", 7))
         self._sub_lbl.setStyleSheet(f"color: {C.PRI_DIM}; background: transparent;")
         self._sub_lbl.hide()
-        self._title_lbl.setGeometry(0, 1, w.width(), 56)
-        self._title_lbl.raise_()
         lay.addStretch()
 
         right_col = QVBoxLayout(); right_col.setSpacing(2)
@@ -6563,7 +6546,6 @@ class MainWindow(QMainWindow):
         self._assistant_name = name.strip() or "JARVIS"
         display = self._assistant_name.upper()
         self.setWindowTitle(f"{display} — {APP_VERSION}")
-        self._title_lbl.setText("Project: Zero")
         self._sub_lbl.setText("")
         self._log._ai_name_lc = self._assistant_name.lower()
         self.hud._assistant_name = display
