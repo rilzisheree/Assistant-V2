@@ -415,6 +415,135 @@ def _find_messenger_call_button(
     return coords, metadata
 
 
+def _safe_move_to(
+    coords: tuple[int, int],
+    *,
+    metadata: dict | None = None,
+    detected_coordinate: tuple[int, int] | None = None,
+) -> tuple[int, int]:
+    """Validate and perform one Messenger mouse move.
+
+    This is the only Messenger escalation path allowed to call moveTo. It
+    refuses missing, non-finite, out-of-bounds, corner, stale, or unproven
+    converted coordinates. It never changes PyAutoGUI.FAILSAFE.
+    """
+    _require_pyautogui()
+    metadata = metadata or {}
+    current = tuple(int(value) for value in pyautogui.position())
+    screen_size = tuple(int(value) for value in pyautogui.size())
+    display = metadata.get("display_diagnostics") or {}
+    virtual_bounds = display.get("virtual_desktop_bounds") or {}
+    requested = tuple(coords) if isinstance(coords, (tuple, list)) else coords
+    raw = metadata.get("raw_coordinates")
+    final = metadata.get("final_coordinates")
+    transform = metadata.get("coordinate_transform", "unavailable")
+    source = metadata.get("capture_backend", "unavailable")
+    print(f"Requested moveTo: X={requested[0] if isinstance(requested, tuple) else '?'}, "
+          f"Y={requested[1] if isinstance(requested, tuple) else '?'}")
+    print(f"Screen size: {screen_size[0]}x{screen_size[1]}")
+    print(f"Virtual desktop bounds: {virtual_bounds or 'unavailable'}")
+    print(f"Current cursor: X={current[0]}, Y={current[1]}")
+    print(f"Detected button coordinate: {detected_coordinate or raw or 'NOT_FOUND'}")
+    print(f"Coordinate source: {source}")
+    print(
+        "Coordinate transformations: "
+        f"{transform}; scale={metadata.get('coordinate_scale', 'unavailable')}; "
+        f"origin={metadata.get('screenshot_origin', 'unavailable')}"
+    )
+
+    reasons: list[str] = []
+    if not isinstance(requested, tuple) or len(requested) != 2:
+        reasons.append("coordinate is missing or has the wrong shape")
+    else:
+        try:
+            x, y = int(requested[0]), int(requested[1])
+        except (TypeError, ValueError, OverflowError):
+            reasons.append("coordinate is not an integer")
+        else:
+            if virtual_bounds:
+                left = int(virtual_bounds.get("left", 0))
+                top = int(virtual_bounds.get("top", 0))
+                width = int(virtual_bounds.get("width", 0))
+                height = int(virtual_bounds.get("height", 0))
+                in_desktop = (
+                    width > 0
+                    and height > 0
+                    and left <= x < left + width
+                    and top <= y < top + height
+                )
+            else:
+                in_desktop = 0 <= x < screen_size[0] and 0 <= y < screen_size[1]
+            if not in_desktop:
+                reasons.append("coordinate is outside the measured desktop bounds")
+            # PyAutoGUI's fail-safe is intentionally kept on. Reject a
+            # generous corner margin before it can be reached.
+            corner_margin = 8
+            corner_sets = [
+                (0, 0, screen_size[0], screen_size[1]),
+            ]
+            if virtual_bounds:
+                corner_sets.append((left, top, width, height))
+            near_emergency_corner = False
+            for bound_left, bound_top, bound_width, bound_height in corner_sets:
+                near_left = x <= bound_left + corner_margin
+                near_right = x >= bound_left + bound_width - 1 - corner_margin
+                near_top = y <= bound_top + corner_margin
+                near_bottom = y >= bound_top + bound_height - 1 - corner_margin
+                if (near_left or near_right) and (near_top or near_bottom):
+                    near_emergency_corner = True
+                    break
+            if near_emergency_corner:
+                reasons.append("coordinate is in an emergency corner")
+            if metadata.get("coordinate_mapping_error"):
+                reasons.append(str(metadata["coordinate_mapping_error"]))
+            if final is not None:
+                try:
+                    if (int(final[0]), int(final[1])) != (x, y):
+                        reasons.append(f"requested coordinate differs from mapped coordinate {final}")
+                except (TypeError, ValueError, IndexError):
+                    reasons.append("mapped coordinate is malformed")
+            screenshot_size = metadata.get("screenshot_size")
+            if raw is not None and screenshot_size:
+                try:
+                    if not (0 <= int(raw[0]) < int(screenshot_size[0])
+                            and 0 <= int(raw[1]) < int(screenshot_size[1])):
+                        reasons.append("detected coordinate is outside the source screenshot")
+                except (TypeError, ValueError, IndexError):
+                    reasons.append("detected coordinate is malformed")
+
+    if reasons:
+        detail = "; ".join(reasons)
+        print(f"INVALID MOUSE DESTINATION — ABORTING SAFE ({detail})")
+        raise RuntimeError(f"INVALID MOUSE DESTINATION — ABORTING SAFE: {detail}")
+
+    pyautogui.moveTo(x, y, duration=0.3)
+    actual = tuple(int(value) for value in pyautogui.position())
+    print(f"Actual cursor position: X={actual[0]}, Y={actual[1]}")
+    if actual != (x, y):
+        print("INVALID MOUSE DESTINATION — ABORTING SAFE (cursor verification mismatch)")
+        raise RuntimeError(
+            "INVALID MOUSE DESTINATION — ABORTING SAFE: "
+            f"requested {(x, y)}, actual {actual}"
+        )
+    return actual
+
+
+def _safe_click_messenger(
+    coords: tuple[int, int],
+    *,
+    metadata: dict | None = None,
+) -> tuple[int, int]:
+    """Move safely, verify the cursor, then click at the verified position."""
+    actual = _safe_move_to(
+        coords,
+        metadata=metadata,
+        detected_coordinate=coords,
+    )
+    # Do not pass x/y here: click(x, y) can perform its own hidden moveTo.
+    pyautogui.click()
+    return actual
+
+
 def send_whatsapp_verified(receiver: str, message: str) -> dict:
     """Send through native WhatsApp and require visual confirmation."""
     _require_pyautogui()
@@ -565,15 +694,19 @@ def start_messenger_call(
     time.sleep(1.5)
 
     try:
-        from actions.computer_control import _click, _screen_find
+        from actions.computer_control import _screen_find
 
-        coords = _screen_find("the audio or voice call button for this Messenger conversation")
+        coords, metadata = _screen_find(
+            "the audio or voice call button for this Messenger conversation",
+            return_diagnostics=True,
+            require_direct_coordinates=True,
+        )
         if not coords:
             return (
                 f"Messenger opened for {receiver}, but the audio-call button "
                 "was not found. No call was started."
             )
-        _click(x=coords[0], y=coords[1])
+        _safe_click_messenger(coords, metadata=metadata)
         return (
             f"Messenger call attempt started for {receiver}. "
             f"Maximum intended duration: {max(1, int(max_duration_minutes))} minutes. "
@@ -621,7 +754,7 @@ def start_messenger_call_verified(
                 ).strip(),
             }
         print("MESSENGER_SCREEN_CAPTURED coordinate_reference=fullscreen")
-        from actions.computer_control import _click, _run_coordinate_calibration
+        from actions.computer_control import _run_coordinate_calibration
 
         calibration = _run_coordinate_calibration() if diagnostic else None
         coords, _mapping = _find_messenger_call_button(diagnostic=diagnostic)
@@ -674,7 +807,11 @@ def start_messenger_call_verified(
                 "Requested PyAutoGUI position: "
                 f"({coords[0]}, {coords[1]})"
             )
-            pyautogui.moveTo(coords[0], coords[1], duration=0.3)
+            _safe_move_to(
+                coords,
+                metadata=_mapping,
+                detected_coordinate=coords,
+            )
             time.sleep(0.7)
             cursor_moved = pyautogui.position()
             print(
@@ -707,7 +844,7 @@ def start_messenger_call_verified(
         click_attempted = False
         try:
             print("CALL_BUTTON_CURSOR_VERIFIED diagnostic_only=false")
-            _click(x=coords[0], y=coords[1])
+            _safe_click_messenger(coords, metadata=_mapping)
             click_attempted = True
             print("CALL_INITIATED")
         finally:

@@ -350,7 +350,6 @@ def _handle_install_dialog_pyautogui(game_name: str, best_drive: dict) -> str:
         return (f"Install dialog opened for '{game_name}'. "
                 f"Please select '{best_drive['letter']}:' and click Install manually.")
 
-    pyautogui.FAILSAFE = False
     drive_label = f"{best_drive['letter']}:"
     install_win = None
 

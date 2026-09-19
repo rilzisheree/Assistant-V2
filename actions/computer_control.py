@@ -216,57 +216,41 @@ def _desktop_capture():
 
 
 def _run_coordinate_calibration() -> dict:
-    """Move through known points and capture measured coordinate metadata.
+    """Capture coordinate metadata without moving the mouse.
 
-    This is intentionally diagnostic-only: it never clicks or presses a key.
-    The saved frames make it possible to compare the desktop state at each
-    cursor position on the real Windows machine.
+    Earlier versions moved through the desktop corners and temporarily
+    disabled PyAutoGUI's fail-safe. That made the diagnostic routine itself
+    capable of triggering the exact emergency condition it was meant to
+    investigate. A calibration snapshot is enough to compare the reported
+    desktop and screenshot spaces without changing the user's cursor.
     """
     _require_pyautogui()
     screen_size = tuple(int(value) for value in pyautogui.size())
     display = _windows_display_diagnostics()
-    bounds = display.get("virtual_desktop_bounds") or {}
-    width = int(bounds.get("width") or screen_size[0])
-    height = int(bounds.get("height") or screen_size[1])
-    points = [
-        (0, 0),
-        (max(0, width // 2), max(0, height // 2)),
-        (max(0, width - 1), max(0, height - 1)),
-    ]
     output_dir = Path.home() / "Desktop" / "jarvis_coordinate_calibration"
     output_dir.mkdir(parents=True, exist_ok=True)
-    stages = []
-    previous_failsafe = pyautogui.FAILSAFE
-    pyautogui.FAILSAFE = False
-    try:
-        for index, requested in enumerate(points, start=1):
-            pyautogui.moveTo(requested[0], requested[1], duration=0.2)
-            time.sleep(0.2)
-            actual = tuple(int(value) for value in pyautogui.position())
-            image, origin, backend = _desktop_capture()
-            path = output_dir / f"stage_{index}_{requested[0]}_{requested[1]}.png"
-            image.save(str(path))
-            stage = {
-                "requested": requested,
-                "actual_pyautogui": actual,
-                "screenshot_size": tuple(int(value) for value in image.size),
-                "screenshot_origin": origin,
-                "capture_backend": backend,
-                "path": str(path),
-            }
-            stages.append(stage)
-            print(
-                "[ComputerControl] CALIBRATION "
-                f"stage={index} requested={requested} actual={actual} "
-                f"screenshot={stage['screenshot_size']} origin={origin} "
-                f"path={path}"
-            )
-    finally:
-        pyautogui.FAILSAFE = previous_failsafe
+    image, origin, backend = _desktop_capture()
+    actual = tuple(int(value) for value in pyautogui.position())
+    path = output_dir / "stage_current_cursor.png"
+    image.save(str(path))
+    stage = {
+        "requested": None,
+        "actual_pyautogui": actual,
+        "screenshot_size": tuple(int(value) for value in image.size),
+        "screenshot_origin": origin,
+        "capture_backend": backend,
+        "path": str(path),
+        "mouse_moved": False,
+    }
+    print(
+        "[ComputerControl] CALIBRATION "
+        f"mouse_moved=false actual={actual} "
+        f"screenshot={stage['screenshot_size']} origin={origin} path={path}"
+    )
     return {
         "pyautogui_size": screen_size,
         "display": display,
-        "stages": stages,
+        "stages": [stage],
     }
 
 
@@ -588,7 +572,7 @@ def _screen_find(
             tier=gemini.FAST, timeout_ms=20_000,
         )
         if response is None:
-            return None
+            return (None, {}) if return_diagnostics else None
 
         text = (response.text or "").strip()
         if "NOT_FOUND" in text.upper():
@@ -642,12 +626,52 @@ def _screen_find(
             "display_diagnostics": display,
             "capture_backend": capture_backend,
         }
+        if return_diagnostics:
+            # Keep a visual record of what the model saw and where the
+            # coordinate pipeline believes the target is. This is deliberately
+            # based on this exact capture, not a later screenshot.
+            try:
+                from PIL import ImageDraw
+
+                overlay = img.copy()
+                draw = ImageDraw.Draw(overlay)
+                marker = converted_screenshot_coordinate
+                if marker is None and raw_coords is not None:
+                    marker = raw_coords
+                if marker is not None:
+                    mx, my = int(marker[0]), int(marker[1])
+                    radius = 18
+                    draw.ellipse(
+                        (mx - radius, my - radius, mx + radius, my + radius),
+                        outline=(255, 32, 32),
+                        width=4,
+                    )
+                    draw.line((mx - 28, my, mx + 28, my), fill=(255, 32, 32), width=3)
+                    draw.line((mx, my - 28, mx, my + 28), fill=(255, 32, 32), width=3)
+                    label = (
+                        f"detected={raw_coords} final={coords} "
+                        f"image={screenshot_size} origin={screenshot_origin}"
+                    )
+                    draw.rectangle((8, 8, min(screenshot_size[0] - 8, 900), 34), fill=(0, 0, 0))
+                    draw.text((14, 14), label, fill=(255, 255, 0))
+                overlay_dir = Path.home() / "Desktop" / "jarvis_coordinate_diagnostics"
+                overlay_dir.mkdir(parents=True, exist_ok=True)
+                overlay_path = overlay_dir / "messenger_call_button.png"
+                overlay.save(str(overlay_path))
+                diagnostics["diagnostic_overlay_path"] = str(overlay_path)
+                print(
+                    "[ComputerControl] COORDINATE_DIAGNOSTIC_OVERLAY "
+                    f"path={overlay_path} detected={raw_coords} final={coords}"
+                )
+            except Exception as exc:
+                diagnostics["diagnostic_overlay_error"] = str(exc)
+                print(f"[ComputerControl] ⚠️ Diagnostic overlay unavailable: {exc}")
         return (coords, diagnostics) if return_diagnostics else coords
 
     except Exception as e:
         print(f"[ComputerControl] ⚠️ screen_find failed: {e}")
 
-    return None
+    return (None, {}) if return_diagnostics else None
 
 def computer_control(
     parameters: dict,
