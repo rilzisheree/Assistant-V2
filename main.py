@@ -742,9 +742,7 @@ class JarvisLive:
         )
         from core.reminder_escalation import get_messenger_escalation_url
 
-        message = str(config.get("initial_message") or "").strip() or (
-            "فكّرتك: ده اختبار تصعيد للتذكير. لو شفت الرسالة طمّنّي عليك."
-        )
+        message = "Testing Message."
         whatsapp = str(config.get("whatsapp_contact_name") or "Baba").strip()
         messenger = str(config.get("messenger_contact_name") or "شريف كمال").strip()
         messenger_url = str(
