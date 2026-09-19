@@ -1,0 +1,395 @@
+We now have the actual Windows audio configuration confirmed.
+
+DO NOT attempt to inspect my Windows machine remotely. You cannot access my local Windows hardware from your development environment.
+
+I have manually verified the following devices on the Windows PC running Project Zero:
+
+WORKING VB-CABLE ENDPOINTS:
+
+* `CABLE Input (VB-Audio Virtual Cable)` — OK
+* `CABLE Output (VB-Audio Virtual Cable)` — OK
+* `CABLE In 16ch (VB-Audio Virtual Cable)` — OK
+
+The underlying Windows device list also shows one healthy `VB-Audio Virtual Cable` device and two error entries. Ignore the two error entries unless they become relevant. Do not reinstall VB-CABLE.
+
+The Project Zero Windows environment currently has:
+
+* `sounddevice 0.5.6`
+
+Do NOT install another audio framework unless you discover that the existing architecture genuinely requires it.
+
+IMPORTANT PROJECT REQUIREMENTS:
+
+* Preserve all existing functionality.
+* Do not rewrite the existing AI architecture.
+* Do not create a second Gemini/voice system.
+* Reuse the existing Gemini voice implementation.
+* Reuse the existing reminder escalation system.
+* Reuse the existing Messenger Web call flow.
+* Do not modify the working Messenger call-button coordinate detection.
+* Do not modify the working coordinate mapping.
+* Do not disable `pyautogui.FAILSAFE`.
+* Do not replace the existing browser automation.
+* Do not fake call/audio success states.
+
+The goal is now to make the already-working Messenger call become a REAL two-way AI voice conversation.
+
+==================================================
+AUDIO ROUTING
+=============
+
+GEMINI → BABA:
+
+Gemini generated voice/audio
+↓
+Project Zero audio playback
+↓
+`CABLE Input (VB-Audio Virtual Cable)`
+↓
+`CABLE Output (VB-Audio Virtual Cable)`
+↓
+Messenger microphone
+↓
+Baba hears Project Zero
+
+BABA → GEMINI:
+
+Baba speaks
+↓
+Messenger Web call
+↓
+Windows audio output
+↓
+WASAPI loopback capture
+↓
+Project Zero
+↓
+Gemini voice input
+
+IMPORTANT:
+
+The physical microphone must NOT be used as Gemini's input for Baba's voice.
+
+We need the audio coming from the Messenger call itself.
+
+Do not capture the room microphone and pretend that is Baba.
+
+==================================================
+USE SOUNDEVICE
+==============
+
+Use the existing:
+
+`sounddevice 0.5.6`
+
+for Windows audio capture/playback where appropriate.
+
+Before implementation, inspect the existing Project Zero audio code and determine exactly what audio format the current Gemini voice implementation uses.
+
+Do not assume:
+
+* sample rate
+* channel count
+* dtype
+* chunk size
+* latency
+* PCM format
+
+Use the existing Gemini implementation's requirements.
+
+If conversion is required between Windows audio and Gemini audio, implement an explicit conversion layer.
+
+==================================================
+VB-CABLE DEVICE RESOLUTION
+==========================
+
+Do NOT hardcode a numeric device index.
+
+Device indexes can change after reboot or when USB devices are connected.
+
+Resolve devices by their actual names.
+
+Find:
+
+`CABLE Input (VB-Audio Virtual Cable)`
+
+and:
+
+`CABLE Output (VB-Audio Virtual Cable)`
+
+at runtime.
+
+The configuration should conceptually contain:
+
+gemini_output_device = CABLE Input (VB-Audio Virtual Cable)
+
+messenger_microphone_device = CABLE Output (VB-Audio Virtual Cable)
+
+Do not use the `CABLE In 16ch` endpoint unless there is a concrete technical reason.
+
+==================================================
+WINDOWS LOOPBACK
+================
+
+For Baba → Gemini, implement Windows WASAPI loopback capture of the actual playback device carrying the Messenger call audio.
+
+Use the Windows/sounddevice capabilities already available.
+
+The implementation should:
+
+1. Determine the Windows output device being used for the Messenger call.
+2. Open that output device using an appropriate loopback capture method.
+3. Capture the call audio in real time.
+4. Convert it into the format required by the existing Gemini voice input.
+5. Stream it into the existing Gemini voice session.
+
+Do NOT record the entire call to a file.
+
+This must be real-time streaming.
+
+If the current `sounddevice` version/API cannot provide the required WASAPI loopback functionality cleanly, inspect the available PortAudio host APIs and determine the correct implementation before adding another dependency.
+
+Do not blindly install packages.
+
+==================================================
+GEMINI → VB-CABLE
+=================
+
+Gemini's generated audio must be continuously streamed into:
+
+`CABLE Input (VB-Audio Virtual Cable)`
+
+This should appear to Windows applications as:
+
+`CABLE Output (VB-Audio Virtual Cable)`
+
+Messenger must use:
+
+`CABLE Output (VB-Audio Virtual Cable)`
+
+as its microphone.
+
+Do not route Gemini's output through the physical speakers and rely on acoustic pickup.
+
+==================================================
+AUDIO LOOP / ECHO PREVENTION
+============================
+
+Prevent this:
+
+Gemini
+↓
+VB-CABLE
+↓
+Messenger
+↓
+Windows speakers
+↓
+physical microphone
+↓
+Gemini
+
+The physical microphone must not feed the Gemini voice session.
+
+Gemini's input should be the Messenger call audio captured through Windows playback/loopback.
+
+==================================================
+CALL STATE
+==========
+
+Preserve the existing working Messenger sequence:
+
+1. Open/focus browser.
+2. Navigate to the existing direct Messenger conversation.
+3. Verify conversation loaded.
+4. Enter fullscreen if currently used by the working flow.
+5. Use the EXISTING coordinate detection.
+6. Click the already-detected phone button.
+7. Verify call initiation.
+8. Verify call connection.
+9. ONLY AFTER call connection is confirmed:
+
+   * initialize Gemini voice
+   * initialize audio capture
+   * initialize CABLE playback
+   * begin bidirectional streaming.
+
+Do NOT initialize the live conversation before Messenger is actually connected.
+
+The state should only become:
+
+`GEMINI_VOICE_ACTIVE`
+
+after:
+
+* Messenger call connected
+* Gemini voice session connected
+* Baba → Gemini capture running
+* Gemini → Messenger playback running
+
+==================================================
+AUDIO INITIALIZATION
+====================
+
+Implement an explicit audio bridge object/module rather than scattering audio code throughout the reminder system.
+
+For example, conceptually:
+
+MessengerGeminiAudioBridge
+
+Responsibilities:
+
+* discover audio devices
+* resolve CABLE Input
+* resolve CABLE Output
+* initialize Gemini playback
+* initialize Messenger call loopback capture
+* convert audio formats
+* stream Gemini output
+* stream Baba input
+* monitor errors
+* cleanly stop all streams
+
+Do not duplicate Gemini voice logic inside this class.
+
+The bridge should connect the existing Gemini voice system to Windows audio.
+
+==================================================
+DIAGNOSTICS
+===========
+
+Add useful diagnostic logging.
+
+Log:
+
+* audio devices discovered
+* selected CABLE Input
+* selected CABLE Output
+* selected loopback device
+* host API
+* sample rate
+* channels
+* dtype
+* stream start
+* stream stop
+* Gemini voice connection
+* Messenger call state
+* audio bridge state
+
+Example:
+
+[AUDIO] CABLE Input found
+[AUDIO] CABLE Output found
+[AUDIO] Messenger loopback device selected: ...
+[AUDIO] Gemini voice connected
+[AUDIO] Gemini → Messenger stream started
+[AUDIO] Messenger → Gemini loopback started
+[AUDIO] Bidirectional audio bridge ACTIVE
+
+Never log raw conversation audio.
+
+Never log credentials/API keys.
+
+==================================================
+FAILURE HANDLING
+================
+
+If:
+
+CABLE Input is missing:
+
+fail with:
+
+"Gemini → Messenger audio device unavailable: CABLE Input not found."
+
+If:
+
+CABLE Output is missing:
+
+fail with:
+
+"Messenger microphone device unavailable: CABLE Output not found."
+
+If loopback cannot initialize:
+
+fail with:
+
+"Messenger → Gemini audio capture unavailable."
+
+If Gemini voice fails:
+
+fail safely.
+
+Do NOT report:
+
+`GEMINI_VOICE_ACTIVE`
+
+unless the actual streams are running.
+
+Do not fake success.
+
+==================================================
+CLEAN SHUTDOWN
+==============
+
+When the call ends or escalation is cancelled:
+
+1. Stop Baba → Gemini capture.
+2. Stop Gemini → Messenger playback.
+3. Close Gemini voice session.
+4. Close audio streams.
+5. Release CABLE devices.
+6. Release loopback device.
+7. Return the escalation engine to its appropriate state.
+
+No orphaned audio streams.
+
+No locked devices.
+
+No background audio thread left running.
+
+==================================================
+TEST MODE
+=========
+
+Before the real Baba call, add a local audio diagnostic that does NOT call anyone.
+
+The diagnostic should verify:
+
+1. `CABLE Input` can be opened for playback.
+2. `CABLE Output` is available as an input endpoint.
+3. Audio can be written to CABLE Input.
+4. CABLE Output can be opened/read.
+5. The intended Windows playback device can expose loopback capture.
+6. Audio streams start and stop cleanly.
+
+Do not make an actual Messenger call during this diagnostic.
+
+After the local diagnostic succeeds, integrate it into the existing real escalation flow.
+
+==================================================
+CRITICAL
+========
+
+The coordinate detection is ALREADY WORKING.
+
+DO NOT TOUCH:
+
+* Gemini screenshot coordinate detection
+* Messenger call-button detection
+* coordinate normalization
+* screenshot resizing
+* F11 coordinate handling
+* PyAutoGUI fail-safe behavior
+
+The next stage is ONLY:
+
+DETECTED CALL BUTTON
+→ CLICK
+→ VERIFY CALL
+→ START REAL BIDIRECTIONAL AUDIO
+→ GEMINI CONVERSATION
+
+Do not regress the part that finally found the call button.
+
+Before making large changes, inspect the existing architecture and implement the smallest clean audio bridge necessary.

@@ -88,6 +88,10 @@ class MessengerAudioBridge:
         self._loopback_stream = None
         self._output_rate = GEMINI_OUTPUT_RATE
         self._capture_rate = GEMINI_INPUT_RATE
+        self._output_channels = 1
+        self._capture_channels = 1
+        self._output_host_api = ""
+        self._capture_host_api = ""
         self._output_lock = threading.Lock()
         self._state_lock = threading.RLock()
         self._active = False
@@ -106,6 +110,11 @@ class MessengerAudioBridge:
                 "active": self._active,
                 "output_rate": self._output_rate,
                 "capture_rate": self._capture_rate,
+                "output_channels": self._output_channels,
+                "capture_channels": self._capture_channels,
+                "output_host_api": self._output_host_api,
+                "capture_host_api": self._capture_host_api,
+                "dtype": PCM_DTYPE,
                 "output_device": CABLE_PLAYBACK_NAME,
                 "loopback_device": self._loopback_device,
                 "last_callback_error": self._last_callback_error,
@@ -193,10 +202,11 @@ class MessengerAudioBridge:
                     )
                     stream.start()
                     self._logger(
-                        f"CABLE playback resolved by name: {device.get('name')} "
+                        "[AUDIO] CABLE Input found: "
+                        f"{device.get('name')} "
                         f"(host={_api_name(apis, device) or 'unknown'}, rate={rate})"
                     )
-                    return stream, rate
+                    return stream, rate, device, apis
                 except Exception as exc:
                     errors.append(
                         f"{device.get('name')} @ {rate} Hz: {exc}"
@@ -275,6 +285,11 @@ class MessengerAudioBridge:
                 stream = None
                 try:
                     settings = sd.WasapiSettings(loopback=True)
+                    # PortAudio may invoke the callback immediately after
+                    # start(), before _open_loopback returns.
+                    self._capture_rate = rate
+                    self._capture_channels = channels
+                    self._loopback_device = str(device.get("name", "")).strip()
                     stream = sd.InputStream(
                         samplerate=rate,
                         channels=channels,
@@ -286,10 +301,12 @@ class MessengerAudioBridge:
                     )
                     stream.start()
                     self._logger(
-                        f"WASAPI loopback resolved by name: {device.get('name')} "
-                        f"(rate={rate}, channels={channels})"
+                        "[AUDIO] Messenger loopback device selected: "
+                        f"{device.get('name')} "
+                        f"(host={_api_name(apis, device) or 'unknown'}, "
+                        f"rate={rate}, channels={channels}, dtype={PCM_DTYPE})"
                     )
-                    return stream, rate
+                    return stream, rate, channels, device, apis
                 except Exception as exc:
                     errors.append(f"{device.get('name')} @ {rate} Hz: {exc}")
                     if stream is not None:
@@ -313,10 +330,48 @@ class MessengerAudioBridge:
             self._stopping = False
         sd = self._sounddevice()
         try:
-            self._output_stream, self._output_rate = self._open_cable_output(sd)
-            self._loopback_stream, self._capture_rate = self._open_loopback(sd)
+            (
+                self._output_stream,
+                self._output_rate,
+                output_device,
+                output_apis,
+            ) = self._open_cable_output(sd)
+            self._output_channels = 1
+            self._output_host_api = _api_name(output_apis, output_device)
+            # The diagnostic normally performs this check before the browser
+            # call. Recheck it here as well: an endpoint can disappear between
+            # the diagnostic and the verified call, and starting a "connected"
+            # bridge without Messenger's virtual microphone is a false success.
+            cable_input_index, cable_input_device, cable_input_apis = (
+                _find_cable_capture_device(sd)
+            )
+            self._logger(
+                "[AUDIO] CABLE Output found: "
+                f"{cable_input_device.get('name')} "
+                f"(host={_api_name(cable_input_apis, cable_input_device) or 'unknown'}, "
+                f"input endpoint index resolved at runtime)"
+            )
+            (
+                self._loopback_stream,
+                self._capture_rate,
+                self._capture_channels,
+                loopback_device,
+                loopback_apis,
+            ) = self._open_loopback(sd)
+            self._capture_host_api = _api_name(loopback_apis, loopback_device)
             with self._state_lock:
                 self._active = True
+            self._logger(
+                "[AUDIO] Gemini → Messenger stream started "
+                f"({self._output_rate} Hz, {self._output_channels} channel, "
+                f"{PCM_DTYPE})"
+            )
+            self._logger(
+                "[AUDIO] Messenger → Gemini loopback started "
+                f"({self._capture_rate} Hz, {self._capture_channels} channels, "
+                f"{PCM_DTYPE})"
+            )
+            self._logger("[AUDIO] Bidirectional audio bridge ACTIVE")
             return self.status
         except Exception:
             self.stop()
@@ -339,6 +394,8 @@ class MessengerAudioBridge:
         except Exception as exc:
             with self._state_lock:
                 self._last_callback_error = str(exc)
+                self._active = False
+            self._logger(f"[AUDIO] Loopback callback stopped: {exc}")
 
     def _enqueue_input(self, data: bytes) -> None:
         if self._stopping or not self.active:
@@ -378,6 +435,11 @@ class MessengerAudioBridge:
 
     def stop(self) -> None:
         with self._state_lock:
+            had_streams = (
+                self._active
+                or self._output_stream is not None
+                or self._loopback_stream is not None
+            )
             self._stopping = True
             self._active = False
         for attr in ("_loopback_stream", "_output_stream"):
@@ -393,6 +455,25 @@ class MessengerAudioBridge:
             except Exception:
                 pass
             setattr(self, attr, None)
+        if had_streams:
+            self._logger("[AUDIO] Bidirectional audio bridge stopped")
+
+
+def _find_cable_capture_device(sd):
+    """Resolve CABLE Output as an input without retaining a capture stream."""
+    devices = list(sd.query_devices())
+    try:
+        apis = list(sd.query_hostapis())
+    except Exception:
+        apis = []
+    for index, device in enumerate(devices):
+        if int(device.get("max_input_channels", 0) or 0) <= 0:
+            continue
+        if _same_name(device.get("name", ""), DEFAULT_CABLE_CAPTURE_NAME):
+            return index, device, apis
+    raise MessengerAudioBridgeError(
+        "Messenger microphone device unavailable: CABLE Output not found."
+    )
 
 
 def _open_cable_capture(sd):
@@ -406,13 +487,10 @@ def _open_cable_capture(sd):
     for index, device in enumerate(devices):
         if int(device.get("max_input_channels", 0) or 0) <= 0:
             continue
-        if not _same_name(device.get("name", ""), DEFAULT_CABLE_CAPTURE_NAME):
-            continue
-        candidates.append((index, device, apis))
+        if _same_name(device.get("name", ""), DEFAULT_CABLE_CAPTURE_NAME):
+            candidates.append((index, device, apis))
     if not candidates:
-        raise MessengerAudioBridgeError(
-            "Messenger microphone device unavailable: CABLE Output not found."
-        )
+        _find_cable_capture_device(sd)
     errors = []
     for index, device, apis in candidates:
         rates = []

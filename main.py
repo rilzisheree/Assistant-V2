@@ -2099,7 +2099,14 @@ class JarvisLive:
 
                 try:
                     bridge = self._messenger_audio_bridge
-                    if bridge is not None and bridge.active:
+                    if bridge is not None:
+                        if not bridge.active:
+                            detail = bridge.status.get("last_callback_error") or (
+                                "audio bridge is no longer active"
+                            )
+                            raise MessengerAudioBridgeError(
+                                f"Messenger/Gemini audio bridge stopped: {detail}"
+                            )
                         # The existing Gemini Live receive/playback path stays
                         # intact; only its destination changes after Messenger
                         # has confirmed the call is connected.
@@ -2109,6 +2116,9 @@ class JarvisLive:
                         )
                     else:
                         await asyncio.to_thread(stream.write, bytes(batch))
+                except MessengerAudioBridgeError:
+                    self._stop_messenger_audio_bridge("audio stream failed")
+                    raise
                 except (RuntimeError, asyncio.CancelledError):
                     break   # executor shutting down — exit cleanly
         except Exception as e:
