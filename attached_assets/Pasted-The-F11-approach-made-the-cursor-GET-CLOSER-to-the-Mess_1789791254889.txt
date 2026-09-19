@@ -1,0 +1,207 @@
+The F11 approach made the cursor GET CLOSER to the Messenger 📞 button, but it is STILL not landing directly on the button.
+
+The latest test reported:
+
+`ESCALATION TEST --> CALL BUTTON POSITIONED`
+`MESSENGER PHONE BUTTON LOCATED AND THE CURSOR WAS MOVED TO ITS CALCULATED FINAL COORDINATE. NO CLICK WAS ATTEMPTED.`
+
+This confirms that the visual detection itself is probably working.
+
+The remaining problem is:
+
+**detected button position → final PyAutoGUI screen position**
+
+That conversion is still incorrect.
+
+STOP adding guessed offsets or multipliers.
+
+## NEW REQUIREMENT: CALIBRATE THE COORDINATE SYSTEM
+
+I want you to build a small, reliable coordinate-calibration step using the ACTUAL SCREEN.
+
+### Step 1 — Fullscreen
+
+Continue using F11.
+
+After F11:
+
+1. Wait for fullscreen transition.
+2. Capture a fresh screenshot.
+3. Record screenshot width/height.
+4. Record PyAutoGUI screen width/height.
+5. Verify whether they are actually identical.
+
+Log something like:
+
+`Screenshot: 1920x1080`
+`PyAutoGUI screen: 1920x1080`
+
+If they are different, DO NOT assume they can be mapped 1:1.
+
+## Step 2 — Find the phone button
+
+Use the existing visual detection system to locate the Messenger 📞 button.
+
+Log:
+
+`Detected button center: X=?, Y=?`
+
+Do NOT click yet.
+
+## Step 3 — MOVE ONLY
+
+Move the cursor to the calculated position.
+
+Then immediately read the REAL cursor position using:
+
+`pyautogui.position()`
+
+Log:
+
+`Requested cursor position: X=?, Y=?`
+`Actual cursor position: X=?, Y=?`
+
+These should match.
+
+## Step 4 — VISUAL CALIBRATION
+
+This is the important part.
+
+I need the system to distinguish between:
+
+A. Where the visual model THINKS the button is.
+
+B. Where Windows/PyAutoGUI ACTUALLY places the cursor.
+
+If the cursor is visually offset from the button, determine whether the offset comes from:
+
+* screenshot scaling
+* Windows DPI scaling
+* browser rendering scale
+* browser fullscreen behavior
+* screenshot cropping
+* screenshot origin
+* display scaling
+* browser device scale factor
+* coordinate transformation inside `screen_find`
+* coordinate transformation inside `screen_click`
+* PyAutoGUI coordinate mapping
+
+DO NOT solve this with a hardcoded Messenger-specific offset.
+
+## IMPORTANT TEST
+
+Add a diagnostic mode that shows/logs BOTH coordinate spaces:
+
+`MODEL / SCREENSHOT COORDINATE`
+`DESKTOP / PYAutoGUI COORDINATE`
+
+For example:
+
+`MODEL: (1542, 72)`
+`DESKTOP: (1542, 72)`
+
+If they differ, explain exactly why.
+
+If the screenshot is cropped:
+
+`desktop_x = screenshot_x + screenshot_origin_x`
+`desktop_y = screenshot_y + screenshot_origin_y`
+
+If the screenshot is scaled:
+
+`desktop_x = screenshot_x * desktop_width / screenshot_width`
+`desktop_y = screenshot_y * desktop_height / screenshot_height`
+
+BUT ONLY use this if the actual measured dimensions prove that scaling is occurring.
+
+Do not blindly apply these formulas.
+
+## EVEN BETTER: USE A KNOWN VISUAL ANCHOR
+
+If possible, use a known browser/UI element as a calibration anchor.
+
+For example, detect a clearly visible fixed element near the top-right of the Messenger window.
+
+Compare:
+
+`detected screenshot coordinate`
+vs.
+`actual expected desktop coordinate`
+
+Use this to determine whether there is an origin/scale mismatch.
+
+The goal is to understand the coordinate transformation mathematically rather than guessing.
+
+## CRITICAL
+
+Do NOT make the Messenger phone button itself responsible for its own offset.
+
+Fix the shared coordinate conversion layer if one exists.
+
+Existing:
+
+* screen_find
+* screen_click
+* computer_control
+* PyAutoGUI
+* screenshot capture
+
+must continue working correctly everywhere else.
+
+## TEST MODE BEHAVIOR
+
+For the next Test Escalation:
+
+WhatsApp:
+→ work normally
+
+Messenger:
+→ open direct URL
+→ F11
+→ capture screenshot
+→ locate 📞
+→ calculate coordinate
+→ MOVE cursor only
+→ DO NOT click
+
+Then stop and report:
+
+`MODEL COORDINATE`
+`SCREENSHOT SIZE`
+`SCREENSHOT ORIGIN`
+`DESKTOP SIZE`
+`WINDOW POSITION`
+`WINDOW SIZE`
+`DPI / SCALE`
+`REQUESTED PYAutoGUI COORDINATE`
+`ACTUAL CURSOR COORDINATE`
+
+Most importantly, I should be able to look at the screen and see whether the cursor is physically sitting ON the 📞 button.
+
+Once this is correctly aligned, restore the actual click.
+
+## DO NOT BREAK ANYTHING
+
+Do not remove or rewrite the existing:
+
+* Reminder system
+* Reminder Settings
+* Test Escalation
+* WhatsApp escalation
+* Messenger direct URL
+* Gemini voice
+* Activity Log
+* screen_find
+* screen_click
+* computer_control
+* browser control
+* Telegram
+* file uploads
+* existing plugins/actions
+
+This is specifically a coordinate-mapping bug.
+
+Do not declare `CALL BUTTON POSITIONED` merely because a coordinate was calculated.
+
+The button is only "positioned" when the physical Windows cursor is actually over the visible Messenger 📞 button.
