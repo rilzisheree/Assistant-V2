@@ -1,0 +1,1370 @@
+# PROJECT ZERO — BUILD REMINDER ESCALATION SYSTEM
+
+I want you to extend my EXISTING AI Assistant / Project Zero.
+
+**DO NOT rebuild the application. DO NOT replace existing systems. DO NOT create a second AI brain. DO NOT break any existing functionality.**
+
+Project Zero already has:
+
+* Gemini API integration
+* Existing AI/plugin architecture
+* Reminder plugin
+* `open_app`
+* `computer_control`
+* PyAutoGUI-based mouse/keyboard control
+* `screen_find`
+* `screen_click`
+* Desktop/window control
+* Browser control
+* Existing Activity Log
+* Existing async/background infrastructure
+* Existing persistence/configuration systems
+* Existing audio/voice infrastructure where applicable
+
+I want to add an advanced **Reminder Escalation System** that can contact my father if I do not acknowledge an important reminder.
+
+---
+
+# IMPORTANT CONTACT CONFIGURATION
+
+This is critical.
+
+The contact is named differently on each platform.
+
+### WhatsApp
+
+My father's WhatsApp contact is saved as:
+
+```text
+Baba
+```
+
+This is the exact contact name the WhatsApp automation should look for.
+
+### Messenger
+
+My father's Messenger name is:
+
+```text
+شريف كمال
+```
+
+This is the exact name the Messenger Web automation should look for.
+
+Do NOT search for "Dad" on either platform.
+
+Do NOT assume the names are identical across platforms.
+
+The mapping is:
+
+```text
+WhatsApp:
+"Baba"
+
+Messenger:
+"شريف كمال"
+```
+
+---
+
+# LANGUAGE REQUIREMENT
+
+My father speaks **Egyptian Arabic**.
+
+All communication with him should therefore use **natural Egyptian Arabic (العامية المصرية)**.
+
+This applies to:
+
+* WhatsApp escalation messages
+* Messenger voice conversation
+* Gemini's spoken responses during the call
+
+Do NOT use formal Modern Standard Arabic unless absolutely necessary.
+
+Do NOT translate Egyptian Arabic literally from English.
+
+The wording should sound like a normal Egyptian person communicating naturally.
+
+Gemini should understand both Egyptian Arabic and English, but should default to Egyptian Arabic when speaking with him.
+
+---
+
+# CORE GOAL
+
+I want to be able to say something like:
+
+> "Remind me tomorrow at 8 PM to check my application. If I don't respond within 15 minutes, message Baba on WhatsApp. If Baba doesn't respond within another 15 minutes, call him on Messenger and talk to him."
+
+Project Zero should understand this naturally through the existing Gemini intelligence.
+
+The resulting workflow should be:
+
+```text id="4h87mo"
+REMINDER CREATED
+        ↓
+REMINDER TRIGGERS
+        ↓
+USER IS NOTIFIED
+        ↓
+WAIT FOR USER ACKNOWLEDGEMENT
+        ↓
+ ┌───────────────┐
+ │               │
+ACKNOWLEDGED   NO RESPONSE
+ │               │
+ ↓               ↓
+STOP        ESCALATION STARTS
+                ↓
+          OPEN WHATSAPP APP
+                ↓
+          FIND "Baba"
+                ↓
+          SEND EGYPTIAN ARABIC MESSAGE
+                ↓
+       WAIT FOR BABA'S RESPONSE
+                ↓
+        ┌───────┴────────┐
+        │                │
+   BABA RESPONDS      NO RESPONSE
+        │                │
+        ↓                ↓
+       STOP       OPEN MESSENGER WEB
+                         ↓
+                  FIND "شريف كمال"
+                         ↓
+                    START CALL
+                         ↓
+                  CALL CONNECTED
+                         ↓
+                GEMINI VOICE SESSION
+                         ↓
+             SPEAK EGYPTIAN ARABIC
+                         ↓
+                  TALK WITH BABA
+                         ↓
+                    END CALL
+                         ↓
+                    COMPLETED
+```
+
+---
+
+# 1. EXTEND THE EXISTING REMINDER PLUGIN
+
+Do NOT replace the existing Reminder plugin.
+
+Normal reminders must continue working exactly as they currently do.
+
+For example:
+
+> "Remind me tomorrow at 8 PM to check my application."
+
+must remain a normal reminder.
+
+Escalation should only happen when the user explicitly requests it.
+
+Example:
+
+> "Remind me tomorrow at 8 PM to check my application, and if I don't respond, contact Baba."
+
+This activates escalation.
+
+---
+
+# 2. ESCALATION CONFIGURATION
+
+Extend the existing reminder model with optional escalation information.
+
+Conceptually:
+
+```python id="tmthvz"
+escalation = {
+    "enabled": True,
+
+    "contact_name": "Baba",
+
+    "whatsapp_contact_name": "Baba",
+
+    "messenger_contact_name": "شريف كمال",
+
+    "initial_channel": "whatsapp",
+
+    "initial_message": "...",
+
+    "user_response_timeout_minutes": 15,
+
+    "contact_response_timeout_minutes": 15,
+
+    "final_channel": "messenger",
+
+    "messenger_call_enabled": True,
+
+    "conversation_language": "Egyptian Arabic",
+
+    "max_call_duration_minutes": 5
+}
+```
+
+Adapt this to the project's existing data model rather than blindly copying it.
+
+Do not duplicate existing configuration systems.
+
+---
+
+# 3. NATURAL LANGUAGE UNDERSTANDING
+
+Use the EXISTING Gemini AI to understand escalation instructions.
+
+Examples:
+
+> "Remind me at 8 PM to check my application. If I don't respond, message Baba."
+
+> "Remind me tomorrow at 7 PM to take care of something. If I don't acknowledge it within 15 minutes, contact Baba."
+
+> "If I don't respond after 15 minutes, WhatsApp Baba, and if he doesn't reply after another 15 minutes, call him on Messenger."
+
+Gemini should extract:
+
+* reminder time
+* reminder content
+* whether escalation is enabled
+* contact
+* WhatsApp message
+* user acknowledgement timeout
+* Baba response timeout
+* Messenger call enabled
+* maximum call duration
+
+Do NOT infer that a reminder is important enough to contact someone.
+
+The user must explicitly configure escalation.
+
+---
+
+# 4. USER ACKNOWLEDGEMENT
+
+When the reminder triggers:
+
+```text id="pomgn4"
+REMINDER TRIGGERED
+```
+
+notify the user through the existing Assistant notification system.
+
+The user can acknowledge using normal Assistant interaction.
+
+Examples:
+
+> "Done."
+
+> "I handled it."
+
+> "That's done."
+
+> "Cancel the reminder."
+
+If acknowledged:
+
+```text id="oyequi"
+REMINDER
+   ↓
+ACKNOWLEDGED
+   ↓
+ESCALATION CANCELLED
+```
+
+Do not contact Baba.
+
+---
+
+# 5. ESCALATION TIMER
+
+If the user does not acknowledge within the configured timeout, start escalation.
+
+Default:
+
+```text id="xh6bfe"
+15 minutes
+```
+
+The timer must be asynchronous.
+
+DO NOT do:
+
+```python id="xod60f"
+time.sleep(900)
+```
+
+on the main Assistant thread.
+
+Use the project's existing async/background task system.
+
+Project Zero must remain completely usable while the timer is active.
+
+---
+
+# 6. WHATSAPP — NATIVE WINDOWS APP
+
+When escalation starts:
+
+Use the existing:
+
+```text id="klbvg9"
+open_app
+```
+
+to open/focus the native WhatsApp Windows application.
+
+Then use existing computer-control functionality.
+
+Prefer:
+
+```text id="6jzmbh"
+screen_find
+screen_click
+computer_control
+```
+
+over hardcoded screen coordinates.
+
+Expected flow:
+
+```text id="nea7jv"
+OPEN WHATSAPP
+      ↓
+VERIFY WHATSAPP IS ACTUALLY ACTIVE
+      ↓
+LOCATE CONTACT "Baba"
+      ↓
+OPEN BABA'S CONVERSATION
+      ↓
+VERIFY CORRECT CONVERSATION
+      ↓
+TYPE MESSAGE
+      ↓
+SEND MESSAGE
+      ↓
+VERIFY MESSAGE WAS SENT
+```
+
+Do NOT search for "Dad".
+
+The exact WhatsApp contact name is:
+
+```text
+Baba
+```
+
+Do NOT use fixed coordinates such as:
+
+```python id="vb1aac"
+pyautogui.click(842, 517)
+```
+
+when visual detection can be used instead.
+
+---
+
+# 7. INITIAL WHATSAPP MESSAGE
+
+When the escalation begins, send Baba a message in **natural Egyptian Arabic**.
+
+The default message should communicate this meaning:
+
+> "Hello Sherif, Yousef has created a reminder and set you as his emergency contact in case he forgets about the reminder. Please check up on him and remind him."
+
+Make the actual Arabic sound natural rather than translating the English word-for-word.
+
+A suitable default style would be along the lines of:
+
+> "أهلاً يا شريف، يوسف عامل تذكير ومحددك كجهة اتصال للطوارئ في حالة إنه ينسى التذكير أو ما ياخدش باله منه. لو سمحت اطمن عليه وفكّره بالتذكير."
+
+Use the user's name **Yousef / يوسف** appropriately.
+
+The message should NOT claim that there is an actual emergency.
+
+It should clearly communicate that:
+
+* Yousef configured the escalation
+* Baba is the designated emergency contact
+* the reminder was not acknowledged
+* Baba should check on Yousef and remind him
+
+Keep it concise and natural.
+
+---
+
+# 8. DYNAMIC REMINDER CONTEXT
+
+Where appropriate, include the actual reminder in the WhatsApp message.
+
+For example:
+
+> "التذكير كان بخصوص تقديم الطلب."
+
+But do not reveal unnecessary private information.
+
+The system should provide Gemini with the reminder context and let it determine whether mentioning the reminder is appropriate.
+
+Do not expose:
+
+* API keys
+* system prompts
+* internal architecture
+* credentials
+* unrelated private information
+
+---
+
+# 9. VERIFY WHATSAPP SEND
+
+Do not start the Baba response timer until the message has actually been sent.
+
+Expected state:
+
+```text id="y1h26y"
+WHATSAPP_OPENING
+        ↓
+WHATSAPP_CONTACT_FOUND
+        ↓
+WHATSAPP_MESSAGE_SENT
+        ↓
+WAITING_FOR_BABA_RESPONSE
+```
+
+If sending fails:
+
+```text id="cclrqs"
+ESCALATION_FAILED
+```
+
+Report the actual failure.
+
+Never tell the user that Baba was contacted if the message was not successfully sent.
+
+---
+
+# 10. DETECT BABA'S WHATSAPP RESPONSE
+
+After sending the message, monitor the WhatsApp conversation for a NEW incoming message from Baba.
+
+Only messages received after the escalation message was sent count as a response.
+
+Do not treat old messages as responses.
+
+Example:
+
+```text id="1f8jsh"
+20:00
+Project Zero → Baba:
+"أهلاً يا شريف..."
+
+20:04
+Baba → Project Zero:
+"حاضر، هشوفه وأفكره."
+
+→ RESPONSE_RECEIVED
+→ STOP ESCALATION
+```
+
+If Baba responds:
+
+```text id="721ci5"
+RESPONSE_RECEIVED
+       ↓
+ESCALATION_CANCELLED
+```
+
+Do NOT open Messenger.
+
+---
+
+# 11. BABA RESPONSE TIMEOUT
+
+If Baba does not respond within the configured timeout:
+
+Default:
+
+```text id="es750f"
+15 minutes
+```
+
+Then continue:
+
+```text id="rg63mt"
+WAITING_FOR_BABA_RESPONSE
+        ↓
+TIMEOUT
+        ↓
+MESSENGER ESCALATION
+```
+
+The timeout must be asynchronous.
+
+---
+
+# 12. MESSENGER WEB
+
+I use **Messenger Web**, not a native Messenger application.
+
+When escalation reaches this stage:
+
+1. Open/focus the browser.
+2. Open Messenger Web.
+3. Prefer opening it in a NEW TAB or NEW WINDOW.
+4. Do not destroy or navigate away from the user's existing browser work.
+5. Verify Messenger Web has loaded.
+6. Search for the exact Messenger contact:
+   `شريف كمال`
+7. Open the correct conversation.
+8. Verify the correct conversation.
+9. Find the voice-call button.
+10. Start the call.
+11. Verify that the call actually connected.
+
+Use existing:
+
+```text id="q10mlm"
+open_app
+computer_control
+screen_find
+screen_click
+```
+
+where appropriate.
+
+Do not search Messenger for "Baba".
+
+The exact Messenger contact name is:
+
+```text
+شريف كمال
+```
+
+---
+
+# 13. BROWSER SAFETY
+
+Before manipulating the browser:
+
+Determine whether the existing browser-control architecture already has a way to:
+
+* open a new tab
+* navigate to a URL
+* focus a browser window
+* preserve the existing tab
+
+Reuse that functionality.
+
+Do not unnecessarily disrupt the user's active browser session.
+
+Ideal behavior:
+
+```text id="q3roc3"
+USER'S EXISTING BROWSER
+        │
+        ├── Existing tabs remain untouched
+        │
+        └── New Messenger tab/window
+                    ↓
+              Messenger Web
+```
+
+---
+
+# 14. VERIFY MESSENGER CALL
+
+Do not assume that clicking the call button means the call connected.
+
+Use visual detection to determine the actual state.
+
+Possible states:
+
+```text id="ldmoz0"
+MESSENGER_OPENING
+MESSENGER_READY
+MESSENGER_CONTACT_FOUND
+CALL_INITIATED
+CALL_CONNECTING
+CALL_CONNECTED
+CALL_FAILED
+```
+
+Only initialize the Gemini voice conversation after the call is actually connected.
+
+---
+
+# 15. GEMINI VOICE CONVERSATION
+
+This is the most important part.
+
+I already use **Gemini API as Project Zero's primary AI brain**.
+
+Do NOT create another AI model.
+
+Do NOT create a separate chatbot.
+
+Extend the existing Gemini architecture to support an appropriate real-time/bidirectional voice session for this authorized Messenger call.
+
+The intended architecture:
+
+```text id="qfcaay"
+Baba's Messenger voice audio
+          ↓
+     Audio Capture
+          ↓
+     Gemini Voice
+          ↓
+      Reasoning
+          ↓
+     Gemini Audio
+          ↓
+     Audio Output
+          ↓
+Messenger Web call
+```
+
+The system should allow:
+
+* Baba to speak
+* Gemini to hear Baba
+* Gemini to understand Egyptian Arabic
+* Gemini to generate a response
+* Gemini to speak Egyptian Arabic
+* Baba to continue speaking
+* Gemini to maintain conversational context
+
+This should be a real conversation, not a prerecorded message.
+
+---
+
+# 16. REUSE EXISTING AUDIO SYSTEM
+
+Before implementing anything:
+
+Inspect the existing project for:
+
+* microphone capture
+* audio streaming
+* speaker output
+* speech recognition
+* text-to-speech
+* Gemini audio functionality
+* audio device selection
+* existing voice assistant code
+
+If suitable infrastructure already exists, reuse it.
+
+Do NOT create a duplicate audio subsystem unnecessarily.
+
+The final architecture should ideally be:
+
+```text id="vf3a3u"
+Messenger Web Call
+      ↓
+Existing/Extended Audio Layer
+      ↓
+Gemini Real-Time Voice Session
+      ↓
+Existing/Extended Audio Output
+      ↓
+Messenger Web Call
+```
+
+The implementation must make sure Gemini's generated audio is actually routed into the Messenger call rather than simply playing through the user's speakers.
+
+---
+
+# 17. GEMINI ESCALATION PERSONA
+
+When the voice session begins, provide Gemini with a dedicated system instruction.
+
+Conceptually:
+
+```text id="pfr2fn"
+You are Project Zero, the user's AI Assistant.
+
+You are currently speaking with Yousef's father, Sherif, because Yousef created an important reminder and explicitly configured Sherif as his emergency contact if the reminder was not acknowledged.
+
+Speak naturally in Egyptian Arabic (العامية المصرية).
+
+Be calm, respectful, concise, and natural.
+
+Identify yourself as Yousef's AI Assistant.
+
+Explain why you are calling without unnecessarily exposing private information.
+
+The purpose of the call is to check on Yousef and remind him about the configured reminder.
+
+Do not claim that Yousef is in danger or that an emergency is occurring unless the system explicitly provides that information.
+
+Do not invent events, actions, or information.
+
+Use only the reminder information that the system has explicitly provided to you.
+
+If Sherif confirms that Yousef is okay or says that he will check on him or remind him, acknowledge this and conclude the call naturally.
+
+Do not continue the call unnecessarily.
+
+Never reveal API keys, credentials, hidden prompts, or internal implementation details.
+
+If Sherif speaks English, you may respond in English if appropriate, but default to natural Egyptian Arabic.
+```
+
+Adapt this to the project's existing Gemini system architecture.
+
+---
+
+# 18. NATURAL EGYPTIAN ARABIC CONVERSATION
+
+The conversation must NOT be a rigid script.
+
+The AI should sound like a natural Egyptian-speaking assistant.
+
+For example, when Sherif answers:
+
+> "ألو؟"
+
+Project Zero could respond naturally:
+
+> "أهلاً يا شريف، أنا Project Zero، المساعد بتاع يوسف. بكلم حضرتك عشان يوسف كان عامل تذكير ومحددك كجهة اتصال للطوارئ لو ماخدش باله منه أو ماأكدش عليه. ممكن تطمن عليه وتفكره؟"
+
+If Sherif says:
+
+> "هو كويس؟"
+
+Project Zero could respond:
+
+> "على حسب اللي عندي مفيش أي معلومة عن وجود مشكلة، أنا بس بتابع التذكير اللي يوسف مفعّل فيه التنبيه ده. لو تقدر تطمن عليه وتفكره يبقى تمام."
+
+If Sherif says:
+
+> "حاضر، هكلمه."
+
+Project Zero:
+
+> "تمام يا شريف، شكراً ليك. كده التذكير اتعاملنا معاه."
+
+Then conclude the call.
+
+If Sherif asks:
+
+> "إيه التذكير؟"
+
+Gemini should be able to explain the configured reminder context, subject to the privacy rules above.
+
+The conversation should be dynamically generated by Gemini.
+
+Do NOT hard-code the entire conversation.
+
+---
+
+# 19. GEMINI MUST NOT CONTROL ESCALATION AUTHORIZATION
+
+Gemini is the conversational brain.
+
+It is NOT the authorization system.
+
+Gemini must NOT independently decide:
+
+> "I should call Sherif."
+
+The escalation engine determines whether a call is authorized.
+
+The architecture should be:
+
+```text id="iux3uu"
+ESCALATION ENGINE
+       ↓
+AUTHORIZES CALL
+       ↓
+MESSENGER CALL
+       ↓
+CALL CONNECTED
+       ↓
+GEMINI VOICE
+       ↓
+CONVERSATION
+```
+
+---
+
+# 20. CALL LENGTH
+
+Default maximum call duration:
+
+```text id="nrledu"
+5 minutes
+```
+
+Make this configurable.
+
+Automatically end the call if:
+
+* Sherif confirms everything is handled
+* conversation naturally concludes
+* Sherif says goodbye
+* call disconnects
+* timeout is reached
+* user cancels
+* critical technical failure occurs
+
+Do not allow an unattended call to continue indefinitely.
+
+---
+
+# 21. CONTACT CONFIGURATION
+
+The contact mapping must be explicitly configured.
+
+```text id="anw9jv"
+PERSON:
+Yousef's father
+
+WHATSAPP:
+Baba
+
+MESSENGER:
+شريف كمال
+
+LANGUAGE:
+Egyptian Arabic
+```
+
+Do not guess contacts based on names in unrelated conversations.
+
+Do not automatically choose a family member.
+
+The user must explicitly configure the person.
+
+---
+
+# 22. STATE MACHINE
+
+Implement clear states.
+
+At minimum:
+
+```text id="fon9dk"
+SCHEDULED
+TRIGGERED
+WAITING_FOR_USER
+ACKNOWLEDGED
+ESCALATION_PENDING
+WHATSAPP_OPENING
+WHATSAPP_CONTACT_FOUND
+WHATSAPP_MESSAGE_SENT
+WAITING_FOR_BABA_RESPONSE
+RESPONSE_RECEIVED
+ESCALATION_CANCELLED
+BABA_RESPONSE_TIMEOUT
+MESSENGER_OPENING
+MESSENGER_READY
+MESSENGER_CONTACT_FOUND
+CALL_INITIATED
+CALL_CONNECTING
+CALL_CONNECTED
+GEMINI_VOICE_ACTIVE
+CALL_ENDED
+COMPLETED
+FAILED
+```
+
+Persist important state so an Assistant restart does not leave the escalation in an inconsistent state.
+
+---
+
+# 23. ACTIVITY LOG
+
+Use the EXISTING Activity Log.
+
+Do not create another logging system.
+
+Example:
+
+```text id="jyhnvq"
+[REMINDER] Reminder #42 triggered
+[ESCALATION] Waiting for user acknowledgement
+[ESCALATION] User did not acknowledge
+[WHATSAPP] Opening WhatsApp
+[WHATSAPP] "Baba" conversation located
+[WHATSAPP] Egyptian Arabic message sent
+[ESCALATION] Waiting 15 minutes for Baba response
+[WHATSAPP] No response received
+[MESSENGER] Opening Messenger Web
+[MESSENGER] "شريف كمال" conversation located
+[MESSENGER] Starting voice call
+[MESSENGER] Call connected
+[GEMINI] Egyptian Arabic voice session initialized
+[GEMINI] Conversation started
+[GEMINI] Conversation ended
+[ESCALATION] Completed
+```
+
+Keep logs concise.
+
+Never log secrets or API keys.
+
+---
+
+# 24. CANCELLATION
+
+The user must be able to cancel the escalation at any time.
+
+Examples:
+
+> "Cancel the Baba escalation."
+
+> "Stop the escalation."
+
+> "Cancel that reminder."
+
+When canceled:
+
+```text id="rqea8o"
+ESCALATION_CANCELLED
+```
+
+Stop:
+
+* timers
+* WhatsApp monitoring
+* Messenger automation
+* Gemini voice session
+* active call where technically possible
+
+---
+
+# 25. TEST MODE
+
+This is REQUIRED.
+
+Before testing real communication, create a safe test mode.
+
+Example:
+
+```text id="y4zfp2"
+REMINDER_ESCALATION_TEST_MODE=true
+```
+
+In test mode:
+
+```text id="rhb2lc"
+Reminder
+ ↓
+Escalation
+ ↓
+Simulated WhatsApp step
+ ↓
+Simulated timeout
+ ↓
+Simulated Messenger step
+ ↓
+Simulated Gemini voice session
+```
+
+It must NOT send a real WhatsApp message or make a real Messenger call.
+
+Also provide a way to manually test the escalation pipeline if the existing command/plugin architecture supports it.
+
+Example:
+
+> "Test Baba escalation."
+
+---
+
+# 26. FAILURE HANDLING
+
+Every external interaction must fail gracefully.
+
+Examples:
+
+### WhatsApp fails
+
+```text id="ipeb8e"
+[ESCALATION] WhatsApp could not be opened.
+```
+
+### Baba cannot be located
+
+```text id="pnmk8a"
+[ESCALATION] Configured WhatsApp contact "Baba" could not be located.
+```
+
+### Message fails
+
+```text id="qykvp8"
+[ESCALATION] WhatsApp message could not be sent.
+```
+
+### Messenger fails
+
+```text id="6bpn6t"
+[ESCALATION] Messenger Web could not be opened.
+```
+
+### Sherif cannot be found
+
+```text id="job46q"
+[ESCALATION] Messenger contact "شريف كمال" could not be located.
+```
+
+### Call fails
+
+```text id="7ua798"
+[ESCALATION] Messenger call could not be established.
+```
+
+### Gemini fails
+
+```text id="4km2b3"
+[ESCALATION] Gemini voice session could not be established.
+```
+
+### Audio routing fails
+
+```text id="ntlyo2"
+[ESCALATION] Gemini voice could not be routed into the Messenger call.
+```
+
+Never crash Project Zero because an escalation failed.
+
+The main Assistant must continue running.
+
+---
+
+# 27. SCREEN CONTROL REQUIREMENTS
+
+Your existing visual tools are:
+
+```text
+screen_find
+screen_click
+```
+
+These already:
+
+1. capture the screen
+2. send the screenshot + description to Gemini
+3. receive coordinates
+4. interact through PyAutoGUI
+
+REUSE THEM.
+
+Do not create a duplicate visual automation system.
+
+For example:
+
+```text
+screen_find("Baba's conversation in WhatsApp")
+```
+
+then:
+
+```text
+screen_click(...)
+```
+
+For Messenger:
+
+```text
+screen_find("the conversation with شريف كمال")
+```
+
+then:
+
+```text
+screen_click(...)
+```
+
+Use the existing implementation.
+
+Do not assume that screen coordinates remain constant between machines, resolutions, scaling settings, or application updates.
+
+---
+
+# 28. COMPUTER CONTROL REQUIREMENTS
+
+Your existing `computer_control` system already supports:
+
+* mouse movement
+* clicking
+* double clicking
+* right clicking
+* dragging
+* typing
+* clipboard
+* hotkeys
+* keyboard input
+* scrolling
+* clearing fields
+* screenshots
+* focusing windows
+* waiting
+
+Reuse these operations.
+
+Do not duplicate them.
+
+Use direct PyAutoGUI operations when the action is deterministic.
+
+Use visual `screen_find` / `screen_click` when the target must be located visually.
+
+---
+
+# 29. APP FOCUS REQUIREMENT
+
+Never assume that the correct application has focus.
+
+Before interacting with WhatsApp:
+
+```text
+OPEN / FOCUS WHATSAPP
+↓
+VERIFY WHATSAPP
+↓
+FIND "Baba"
+↓
+INTERACT
+```
+
+Before interacting with Messenger:
+
+```text
+FOCUS / OPEN BROWSER
+↓
+OPEN MESSENGER WEB
+↓
+VERIFY MESSENGER
+↓
+FIND "شريف كمال"
+↓
+INTERACT
+```
+
+Do not blindly execute keyboard shortcuts against an unknown focused window.
+
+---
+
+# 30. DO NOT BREAK EXISTING FEATURES
+
+Before making changes, inspect:
+
+* Reminder plugin
+* Gemini integration
+* plugin/action discovery
+* `open_app`
+* `computer_control`
+* `screen_find`
+* `screen_click`
+* browser control
+* desktop control
+* audio/voice systems
+* Activity Log
+* persistence
+* async/background tasks
+* existing UI
+
+Do not rewrite these systems unless absolutely necessary.
+
+Extend them.
+
+Do not:
+
+* remove existing plugins
+* rename existing tools unnecessarily
+* remove existing commands
+* replace Gemini
+* create a second AI brain
+* replace the existing computer-control architecture
+* break file uploads
+* break Telegram
+* break remote control
+* break normal reminders
+* break the UI
+
+---
+
+# 31. SECURITY
+
+Reuse the existing secure Gemini API configuration.
+
+Never hard-code:
+
+```text
+GEMINI_API_KEY
+```
+
+Never print the API key.
+
+Never expose it through:
+
+* Activity Log
+* WhatsApp
+* Messenger
+* Telegram
+* UI
+* exception messages
+
+Do not store credentials in reminder objects.
+
+---
+
+# 32. IMPLEMENTATION PROCESS
+
+DO NOT immediately start rewriting files.
+
+First inspect the entire project.
+
+Report:
+
+1. Reminder architecture
+2. Gemini architecture
+3. Computer-control architecture
+4. `open_app` implementation
+5. `screen_find`
+6. `screen_click`
+7. WhatsApp interaction capabilities
+8. Browser/Messenger capabilities
+9. Existing audio/voice capabilities
+10. Async/background infrastructure
+11. Persistence
+12. Activity Log
+13. Exact files that need modification
+14. New files that are actually necessary
+
+Then implement the smallest clean extension.
+
+---
+
+# 33. FINAL ACCEPTANCE TEST
+
+The following must work:
+
+User says:
+
+> "Remind me tomorrow at 8 PM to check my application. If I don't respond within 15 minutes, message Baba on WhatsApp. If Baba doesn't respond within another 15 minutes, call him on Messenger and talk to him."
+
+Expected:
+
+```text
+8:00 PM
+↓
+Reminder triggers
+↓
+User is notified
+↓
+User doesn't acknowledge
+↓
+15 minutes
+↓
+WhatsApp native app opens
+↓
+"Baba" conversation found
+↓
+Egyptian Arabic message sent
+↓
+System monitors for NEW Baba response
+```
+
+### If Baba responds:
+
+```text
+Baba responds
+↓
+RESPONSE_RECEIVED
+↓
+Escalation cancelled
+↓
+No Messenger call
+```
+
+### If Baba does not respond:
+
+```text
+15 minutes
+↓
+Messenger Web opens
+↓
+"شريف كمال" conversation found
+↓
+Voice call initiated
+↓
+Call connects
+↓
+Gemini Egyptian Arabic voice session starts
+↓
+Project Zero speaks naturally with Sherif
+↓
+Sherif speaks
+↓
+Gemini listens
+↓
+Gemini responds
+↓
+Conversation concludes
+↓
+Call ends
+↓
+Escalation COMPLETED
+```
+
+---
+
+# FINAL RULE
+
+**This must feel like a native capability of Project Zero.**
+
+Do not bolt on a completely separate automation framework.
+
+Use what already exists:
+
+```text
+Gemini
++
+Plugin System
++
+Reminder
++
+open_app
++
+computer_control
++
+screen_find
++
+screen_click
++
+Browser Control
++
+Existing Audio
++
+Activity Log
++
+Persistence
+```
+
+The new capability is simply the orchestration layer connecting them:
+
+```text
+REMINDER
+   ↓
+USER ACKNOWLEDGEMENT
+   ↓
+WHATSAPP DESKTOP
+   ↓
+BABA
+   ↓
+DAD RESPONSE
+   ↓
+MESSENGER WEB
+   ↓
+شريف كمال
+   ↓
+VOICE CALL
+   ↓
+GEMINI
+   ↓
+EGYPTIAN ARABIC CONVERSATION
+```
+
+**Preserve the existing architecture wherever possible. Extend; don't replace.**
