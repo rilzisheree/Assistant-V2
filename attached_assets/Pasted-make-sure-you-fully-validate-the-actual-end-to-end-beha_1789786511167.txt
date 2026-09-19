@@ -1,0 +1,67 @@
+make sure you fully validate the actual end-to-end behavior rather than only validating syntax.
+
+The required flow is:
+
+Normal reminders remain completely unchanged.
+Escalation is strictly opt-in.
+When an escalated reminder triggers:
+Wait for the configured acknowledgement period.
+If I acknowledge the reminder, cancel the escalation immediately.
+If I don't acknowledge it, open the native Windows WhatsApp app.
+Find the exact contact Baba.
+Send the configured Egyptian Arabic message.
+Verify that the message was actually sent.
+After WhatsApp sends successfully, monitor for a NEW response from Baba.
+If Baba responds, cancel the escalation and log the response.
+If Baba does not respond within the configured timeout:
+Open/focus Messenger Web in the browser.
+Find the exact contact شريف كمال.
+Open the conversation.
+Locate and initiate the voice call.
+Verify that the call actually connects.
+ONLY after the Messenger call is confirmed connected should the Gemini voice session start.
+Gemini must use the existing AI brain/integration — do NOT create a second AI assistant.
+If the existing Gemini voice/audio infrastructure cannot actually route bidirectional audio through the Messenger call, do not fake success. Mark the escalation as partially failed/unsupported and log the exact reason.
+Never crash the main Assistant because an escalation step fails.
+
+Also verify restart recovery:
+
+If the Assistant restarts while waiting for Baba's response, the escalation must resume from persisted state.
+If it restarts during Messenger escalation, recover safely without accidentally sending duplicate WhatsApp messages or making duplicate calls.
+Persist the escalation state and timestamps needed for recovery.
+
+Verify cancellation:
+
+"Cancel that reminder"
+"Cancel the Baba escalation"
+"Stop the escalation"
+
+These must cancel pending timers, monitoring, browser automation, and Gemini voice sessions where applicable.
+
+IMPORTANT:
+Do not create a duplicate computer-control system, browser automation system, audio system, logging system, or AI brain. Reuse the existing implementations.
+
+Also inspect the final diff specifically for regressions to:
+
+normal reminders
+reminder acknowledgement
+existing plugins/actions
+WhatsApp functionality
+browser control
+file uploads
+Telegram
+remote control
+Activity Log
+existing Gemini functionality
+
+Run whatever tests/static checks are available and report:
+
+exact files changed
+exact files added
+state-machine states implemented
+what is fully functional
+what is best-effort
+what is currently blocked by the Messenger/Gemini audio bridge
+whether normal reminders were left untouched
+
+Do not claim the Messenger/Gemini voice call works unless you actually verified the complete audio path.
