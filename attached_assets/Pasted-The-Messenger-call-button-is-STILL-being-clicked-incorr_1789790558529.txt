@@ -1,0 +1,146 @@
+The Messenger call button is STILL being clicked incorrectly. The cursor moves FAR up/left from the actual 📞 button.
+
+I want you to change the approach completely.
+
+### NEW APPROACH: FORCE A KNOWN FULLSCREEN COORDINATE SPACE
+
+For the Messenger escalation flow, use **F11 fullscreen** so the browser has a predictable, stable screen coordinate system.
+
+Do NOT keep adding coordinate multipliers or guessing offsets.
+
+### Required flow
+
+When starting the Messenger escalation:
+
+1. Open/focus the existing browser.
+2. Navigate to the configured Messenger direct URL:
+   `https://www.messenger.com/e2ee/t/7721188384660930`
+3. Wait until Messenger is actually loaded.
+4. Press `F11` to put the browser into fullscreen.
+5. Wait briefly for the fullscreen transition to finish.
+6. Capture a NEW screenshot AFTER fullscreen is active.
+7. Use that new screenshot as the ONLY coordinate reference for locating the Messenger call button.
+8. Locate the 📞 voice-call button using the existing visual/screen-control system.
+9. The coordinates returned from the screenshot must correspond directly to the physical desktop coordinates used by PyAutoGUI.
+10. Move the cursor to the detected 📞 button first.
+11. Log the detected coordinates and cursor position.
+12. Temporarily DO NOT click during the diagnostic phase so I can visually confirm the cursor lands directly on the 📞 button.
+13. Once the cursor is correctly aligned, enable the actual click.
+14. Verify that the call UI actually changed.
+15. Only after the call is genuinely connected should the Gemini voice session start.
+
+### IMPORTANT: NO MORE COORDINATE GUESSING
+
+Do NOT:
+
+* hardcode an X/Y coordinate
+* use a guessed multiplier
+* apply arbitrary offsets
+* assume browser coordinates equal screen coordinates without verifying
+* compensate for the previous up/left movement with random numbers
+* search for the button using Ctrl+F
+* use the old Messenger contact-search flow
+
+The screenshot and PyAutoGUI coordinate systems MUST be explicitly reconciled.
+
+### Diagnose the actual coordinate system
+
+Before clicking, log:
+
+* physical Windows screen resolution
+* PyAutoGUI `size()`
+* screenshot pixel dimensions
+* browser window position
+* browser window dimensions
+* screenshot crop/region, if any
+* screenshot origin X/Y, if any
+* detected call-button X/Y
+* final PyAutoGUI X/Y
+* current cursor X/Y
+* Windows display scaling / DPI if obtainable
+* whether F11 fullscreen is active
+
+If the screenshot is already a full-screen screenshot, then:
+
+`detected screenshot X/Y = PyAutoGUI screen X/Y`
+
+There should be NO additional transformation.
+
+If the screenshot is cropped, explicitly add the crop's desktop origin:
+
+`desktop_x = crop_origin_x + screenshot_x`
+
+`desktop_y = crop_origin_y + screenshot_y`
+
+Do this at the coordinate-conversion source rather than patching individual Messenger actions.
+
+### F11 STATE MUST BE PART OF THE FLOW
+
+Fullscreen is not just a visual preference.
+
+Treat it as a required automation state:
+
+`MESSENGER_OPENING`
+→ `MESSENGER_READY`
+→ `MESSENGER_FULLSCREEN`
+→ `MESSENGER_SCREEN_CAPTURED`
+→ `MESSENGER_CALL_BUTTON_FOUND`
+→ `CALL_BUTTON_CURSOR_VERIFIED`
+→ `CALL_INITIATED`
+→ `CALL_CONNECTING`
+→ `CALL_CONNECTED`
+
+If F11 fails, do NOT continue pretending the coordinate environment is valid. Log the failure and stop the Messenger escalation safely.
+
+### VERY IMPORTANT: DO NOT BREAK EXISTING SCREEN CONTROL
+
+Reuse the existing:
+
+* `computer_control`
+* `screen_find`
+* `screen_click`
+* PyAutoGUI
+* screenshot functionality
+* browser control
+* Activity Log
+
+Do NOT create a second coordinate/automation system.
+
+If the existing `screen_find` / `screen_click` implementation is responsible for the coordinate conversion, fix that implementation properly so other existing visual-control functionality continues working.
+
+### Diagnostic test
+
+For the first test after implementing this:
+
+1. Start Test Escalation.
+2. WhatsApp must continue working exactly as it currently does.
+3. Messenger direct URL must open exactly as it currently does.
+4. Browser enters F11 fullscreen.
+5. Take a fresh fullscreen screenshot.
+6. Find the 📞 button.
+7. Move the mouse to it WITHOUT clicking.
+8. Stop/pause at this point and let me visually confirm the cursor is directly over the phone button.
+
+If the cursor is STILL far up/left, the logs should make it possible to determine exactly where the coordinate transformation is occurring.
+
+Once the cursor is correctly aligned, restore the click and complete the real call verification.
+
+### Do not remove existing functionality
+
+Do NOT break:
+
+* normal reminders
+* recurring reminders
+* reminder cancellation
+* escalation state machine
+* WhatsApp escalation
+* Messenger direct URL
+* Gemini voice integration
+* Activity Log
+* existing screen control
+* file uploads
+* Telegram
+* remote control
+* any existing plugins/actions
+
+The goal is specifically to make Messenger's visual coordinate handling reliable by establishing a known F11 fullscreen coordinate space.

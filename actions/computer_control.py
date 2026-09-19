@@ -97,6 +97,20 @@ def _require_pyautogui():
     if not _PYAUTOGUI:
         raise RuntimeError("PyAutoGUI not installed. Run: pip install pyautogui")
 
+
+def _physical_screen_size() -> tuple[int, int] | None:
+    """Return the desktop pixel dimensions reported by the OS, when available."""
+    if platform.system() != "Windows":
+        return None
+    try:
+        user32 = ctypes.windll.user32
+        return (
+            int(user32.GetSystemMetrics(0)),
+            int(user32.GetSystemMetrics(1)),
+        )
+    except Exception:
+        return None
+
 _FIRST_NAMES = [
     "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Drew", "Quinn",
     "Avery", "Blake", "Cameron", "Dakota", "Emerson", "Finley", "Harper",
@@ -332,6 +346,7 @@ def _screen_find(
     description: str,
     *,
     return_diagnostics: bool = False,
+    require_direct_coordinates: bool = False,
 ) -> tuple[int, int] | tuple[tuple[int, int] | None, dict] | None:
     api_key = _get_api_key()
     if not api_key:
@@ -374,24 +389,37 @@ def _screen_find(
             coords = (int(match.group(1)), int(match.group(2))) if match else None
 
         raw_coords = coords
+        if require_direct_coordinates and screenshot_size != screen_size:
+            raise RuntimeError(
+                "Direct coordinate mode requires the screenshot and PyAutoGUI "
+                f"spaces to match, got screenshot={screenshot_size}, "
+                f"pyautogui={screen_size}"
+            )
         if coords and screenshot_size != screen_size:
-            # The model reports pixels in the image it saw. Convert using the
-            # two dimensions observed at runtime; never use a fixed multiplier.
+            # Non-fullscreen callers retain the existing runtime-derived
+            # conversion. Fullscreen callers explicitly opt into direct
+            # coordinates above; no Messenger-specific correction belongs here.
             sx = screen_size[0] / screenshot_size[0]
             sy = screen_size[1] / screenshot_size[1]
             coords = (round(coords[0] * sx), round(coords[1] * sy))
 
+        physical_size = _physical_screen_size() or screen_size
+        direct = screenshot_size == screen_size
+        scale = (
+            screen_size[0] / screenshot_size[0],
+            screen_size[1] / screenshot_size[1],
+        )
+
         diagnostics = {
-            "physical_screen_size": screenshot_size,
+            "physical_screen_size": physical_size,
             "pyautogui_screen_size": screen_size,
             "screenshot_size": screenshot_size,
             "screenshot_crop_offset": (0, 0),
             "raw_coordinates": raw_coords,
             "final_coordinates": coords,
-            "coordinate_scale": (
-                screen_size[0] / screenshot_size[0],
-                screen_size[1] / screenshot_size[1],
-            ),
+            "coordinate_scale": scale,
+            "coordinate_transform": "direct" if direct else "runtime-scale",
+            "direct_coordinates": direct,
             "windows_dpi_awareness": _DPI_AWARENESS,
         }
         return (coords, diagnostics) if return_diagnostics else coords

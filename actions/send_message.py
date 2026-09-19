@@ -138,7 +138,8 @@ def _open_app(app_name: str) -> bool:
 def _open_browser_url(url: str) -> bool:
     import webbrowser
     try:
-        webbrowser.open(url)
+        # Ask the platform handler to reuse the existing browser session.
+        webbrowser.open(url, new=0)
         time.sleep(4.0) 
         return True
     except Exception as e:
@@ -238,6 +239,109 @@ def _windows_dpi_scaling() -> str:
         return "unavailable"
 
 
+def _focus_existing_browser() -> bool:
+    """Bring an existing browser window to the foreground when discoverable."""
+    browser_terms = (
+        "chrome", "edge", "firefox", "brave", "opera", "vivaldi", "browser",
+        "messenger", "facebook",
+    )
+    try:
+        import pygetwindow
+
+        windows = list(pygetwindow.getAllWindows())
+        candidates = [
+            window for window in windows
+            if str(getattr(window, "title", "")).strip()
+            and any(term in str(window.title).lower() for term in browser_terms)
+        ]
+        if not candidates:
+            return False
+        window = candidates[0]
+        try:
+            if getattr(window, "isMinimized", False):
+                window.restore()
+        except Exception:
+            pass
+        window.activate()
+        time.sleep(0.5)
+        active = pygetwindow.getActiveWindow()
+        return active is not None and any(
+            term in str(getattr(active, "title", "")).lower()
+            for term in browser_terms
+        )
+    except Exception as exc:
+        print(f"[SendMessage] Browser focus unavailable: {exc}")
+        return False
+
+
+def _browser_window_geometry() -> dict | None:
+    """Return active-window geometry for fullscreen verification."""
+    try:
+        import pygetwindow
+
+        window = pygetwindow.getActiveWindow()
+        if window is None:
+            return None
+        return {
+            "title": str(getattr(window, "title", "")),
+            "left": int(window.left),
+            "top": int(window.top),
+            "width": int(window.width),
+            "height": int(window.height),
+        }
+    except Exception:
+        return None
+
+
+def _enter_messenger_fullscreen() -> tuple[bool, dict]:
+    """Enter browser F11 fullscreen and verify the coordinate space."""
+    _require_pyautogui()
+    if not _focus_existing_browser():
+        return False, {"reason": "Existing browser window could not be focused."}
+
+    screen_size = tuple(int(value) for value in pyautogui.size())
+    before = _browser_window_geometry()
+    print(f"MESSENGER_READY browser_geometry={before or 'unavailable'}")
+    already_fullscreen = bool(
+        before
+        and before["left"] <= 0
+        and before["top"] <= 0
+        and before["width"] >= screen_size[0] - 2
+        and before["height"] >= screen_size[1] - 2
+    )
+    if not already_fullscreen:
+        pyautogui.press("f11")
+        time.sleep(1.2)
+    else:
+        print("MESSENGER_FULLSCREEN already_active=true")
+    after = _browser_window_geometry()
+    geometry_ok = bool(
+        after
+        and after["left"] <= 0
+        and after["top"] <= 0
+        and after["width"] >= screen_size[0] - 2
+        and after["height"] >= screen_size[1] - 2
+    )
+    diagnostics = {
+        "screen_size": screen_size,
+        "browser_window_before": before,
+        "browser_window_after": after,
+        "fullscreen_active": geometry_ok,
+        "dpi_scaling": _windows_dpi_scaling(),
+    }
+    print(
+        "MESSENGER_FULLSCREEN "
+        f"active={geometry_ok} screen={screen_size} "
+        f"browser_geometry={after or 'unavailable'} "
+        f"dpi={diagnostics['dpi_scaling']}"
+    )
+    if not geometry_ok:
+        diagnostics["reason"] = (
+            "F11 did not produce a verified fullscreen browser window."
+        )
+    return geometry_ok, diagnostics
+
+
 def _find_messenger_call_button(
     diagnostic: bool = False,
 ) -> tuple[tuple[int, int] | None, dict]:
@@ -250,6 +354,7 @@ def _find_messenger_call_button(
         "Do not select the video camera button, search button, conversation "
         "options button, back button, profile button, or any browser control.",
         return_diagnostics=diagnostic,
+        require_direct_coordinates=True,
     )
     if diagnostic and isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
         coords, metadata = result
@@ -259,11 +364,13 @@ def _find_messenger_call_button(
     if diagnostic:
         print("CALL BUTTON DETECTION")
         print(f"Physical screen size: {metadata.get('physical_screen_size', 'unavailable')}")
+        print(f"PyAutoGUI screen size: {metadata.get('pyautogui_screen_size', 'unavailable')}")
         print(f"Screenshot size: {metadata.get('screenshot_size', 'unavailable')}")
         print(f"Messenger window position/size: {_active_window_dimensions()}")
         print(f"Screenshot crop/offset: {metadata.get('screenshot_crop_offset', 'unavailable')}")
         print(f"Detected button X/Y: {metadata.get('raw_coordinates', 'NOT_FOUND')}")
         print(f"Final PyAutoGUI click X/Y: {metadata.get('final_coordinates', 'NOT_FOUND')}")
+        print(f"Coordinate transform: {metadata.get('coordinate_transform', 'unavailable')}")
         print(f"Windows DPI scaling: {_windows_dpi_scaling()}")
         if not coords:
             print("Messenger voice-call button could not be visually identified")
@@ -447,8 +554,10 @@ def start_messenger_call_verified(
     """Start a Messenger call only after verifying contact and connection."""
     _require_pyautogui()
     try:
-        if not _open_browser_url(_messenger_escalation_url(conversation_url)):
+        direct_url = _messenger_escalation_url(conversation_url)
+        if not _open_browser_url(direct_url):
             return {"connected": False, "detail": "Could not open Messenger Web."}
+        print(f"MESSENGER_OPENING direct_url={direct_url}")
         time.sleep(1.5)
         contact_verdict = _screen_verdict(
             f"Is Messenger Web showing the expected conversation with '{receiver}' "
@@ -462,6 +571,18 @@ def start_messenger_call_verified(
                 "detail": f"Exact Messenger contact was not verified ({contact_verdict or 'UNKNOWN'}).",
             }
 
+        fullscreen_ok, fullscreen_diagnostics = _enter_messenger_fullscreen()
+        if not fullscreen_ok:
+            return {
+                "connected": False,
+                "state": "MESSENGER_FULLSCREEN_FAILED",
+                "detail": (
+                    "Messenger fullscreen could not be verified; the call was "
+                    "not started. "
+                    f"{fullscreen_diagnostics.get('reason', '')}"
+                ).strip(),
+            }
+        print("MESSENGER_SCREEN_CAPTURED coordinate_reference=fullscreen")
         from actions.computer_control import _click
 
         coords, _mapping = _find_messenger_call_button(diagnostic=diagnostic)
@@ -471,6 +592,7 @@ def start_messenger_call_verified(
                 "state": "CALL_BUTTON_NOT_FOUND",
                 "detail": "Messenger voice-call button could not be visually identified.",
             }
+        print(f"MESSENGER_CALL_BUTTON_FOUND coordinates={coords}")
         cursor_before = pyautogui.position()
         if diagnostic:
             print(f"Current cursor X/Y: ({cursor_before[0]}, {cursor_before[1]})")
@@ -478,6 +600,7 @@ def start_messenger_call_verified(
             time.sleep(0.7)
             cursor_moved = pyautogui.position()
             print(f"Cursor moved to: ({cursor_moved[0]}, {cursor_moved[1]})")
+            print("CALL_BUTTON_CURSOR_VERIFIED diagnostic_only=true")
             return {
                 "connected": None,
                 "state": "CALL_BUTTON_HOVERED",
@@ -488,8 +611,10 @@ def start_messenger_call_verified(
             }
         click_attempted = False
         try:
+            print("CALL_BUTTON_CURSOR_VERIFIED diagnostic_only=false")
             _click(x=coords[0], y=coords[1])
             click_attempted = True
+            print("CALL_INITIATED")
         finally:
             if diagnostic:
                 print(f"Click attempted: {'yes' if click_attempted else 'no'}")
@@ -515,7 +640,9 @@ def start_messenger_call_verified(
                 print(f"Visual/state change detected afterward: {last_verdict or 'UNKNOWN'}")
             if last_verdict == "CONNECTING":
                 saw_connecting = True
+                print("CALL_CONNECTING")
             if last_verdict == "CONNECTED":
+                print("CALL_CONNECTED")
                 return {
                     "connected": True,
                     "state": "CALL_CONNECTED",
