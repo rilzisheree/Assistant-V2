@@ -7,6 +7,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from core.reminder_escalation import (
+    normalize_config as normalize_escalation_config,
+    register as register_escalation,
+)
+
 _CNW: dict = (
     {"creationflags": subprocess.CREATE_NO_WINDOW}
     if platform.system() == "Windows" else {}
@@ -294,6 +299,7 @@ def reminder(
     date_str = parameters.get("date", "").strip()
     time_str = parameters.get("time", "").strip()
     message  = parameters.get("message", "Reminder").strip()
+    escalation = parameters.get("escalation")
 
     if not date_str or not time_str:
         return "I need both a date and a time to set a reminder."
@@ -308,6 +314,29 @@ def reminder(
 
     os_name    = _get_os()
     safe_msg   = _sanitise(message)
+    escalation_enabled = (
+        isinstance(escalation, dict) and bool(escalation.get("enabled", False))
+    )
+    normalized_escalation = {}
+    if escalation_enabled:
+        try:
+            normalized_escalation = normalize_escalation_config(escalation)
+            if not normalized_escalation["whatsapp_contact_name"]:
+                return (
+                    "Escalation was requested, but the WhatsApp contact name "
+                    "was not provided."
+                )
+            if not normalized_escalation["messenger_contact_name"]:
+                return (
+                    "Escalation was requested, but the Messenger contact name "
+                    "was not provided."
+                )
+        except Exception as e:
+            return f"Invalid escalation settings: {e}"
+        # Keep the normal notification useful even when the assistant is asleep.
+        safe_msg = _sanitise(
+            f"{safe_msg} — say 'acknowledged' when you have handled this."
+        )
     task_name  = f"JARVISReminder_{target_dt.strftime('%Y%m%d_%H%M%S')}"
 
     try:
@@ -330,17 +359,43 @@ def reminder(
     if not job_id:
         return "I couldn't register the reminder with the system scheduler."
 
+    if escalation_enabled:
+        try:
+            register_escalation(
+                reminder_id=task_name,
+                target=target_dt,
+                message=message,
+                config=normalized_escalation,
+            )
+        except Exception as e:
+            print(f"[Reminder] ❌ Escalation registration failed: {e}")
+            return (
+                "The normal reminder was set, but I could not register its "
+                f"escalation: {e}"
+            )
+
     if player:
         player.write_log(f"[Reminder] ✅ {date_str} {time_str} — {safe_msg[:40]}")
 
     friendly_time = target_dt.strftime("%B %d at %I:%M %p")
+    if escalation_enabled:
+        return (
+            f"Reminder set for {friendly_time}; escalation is enabled. "
+            "I will wait for your acknowledgement before contacting anyone."
+        )
     return f"Reminder set for {friendly_time}."
 
 
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "reminder",
-    "description": "Sets a timed reminder using Task Scheduler.",
+    "description": (
+        "Sets a timed reminder using the operating system scheduler. "
+        "Normal reminders do not contact anyone. Only include escalation when "
+        "the user explicitly asks for it. Escalation sends WhatsApp to the exact "
+        "configured contact, then makes a best-effort Messenger call attempt "
+        "after the contact timeout."
+    ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
@@ -355,6 +410,53 @@ TOOL = {
             "message": {
                 "type": "STRING",
                 "description": "Reminder message text"
+            },
+            "escalation": {
+                "type": "OBJECT",
+                "description": (
+                    "Optional. Include only when the user explicitly requests "
+                    "escalation. WhatsApp contact must be 'Baba'; Messenger "
+                    "contact must be 'شريف كمال'. Use natural Egyptian Arabic "
+                    "for initial_message."
+                ),
+                "properties": {
+                    "enabled": {
+                        "type": "BOOLEAN",
+                        "description": "True only for an explicit escalation request"
+                    },
+                    "whatsapp_contact_name": {
+                        "type": "STRING",
+                        "description": "Exact WhatsApp contact name: Baba"
+                    },
+                    "messenger_contact_name": {
+                        "type": "STRING",
+                        "description": "Exact Messenger contact name: شريف كمال"
+                    },
+                    "initial_message": {
+                        "type": "STRING",
+                        "description": "Natural Egyptian Arabic WhatsApp message"
+                    },
+                    "user_response_timeout_minutes": {
+                        "type": "INTEGER",
+                        "description": "Minutes to wait for the user acknowledgement"
+                    },
+                    "contact_response_timeout_minutes": {
+                        "type": "INTEGER",
+                        "description": "Minutes to wait after WhatsApp before the call attempt"
+                    },
+                    "messenger_call_enabled": {
+                        "type": "BOOLEAN",
+                        "description": "Whether to attempt the Messenger call"
+                    },
+                    "conversation_language": {
+                        "type": "STRING",
+                        "description": "Language for the attempted conversation"
+                    },
+                    "max_call_duration_minutes": {
+                        "type": "INTEGER",
+                        "description": "Maximum intended call duration"
+                    }
+                }
             }
         },
         "required": [

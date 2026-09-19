@@ -1,4 +1,5 @@
 import json
+import io
 import subprocess
 import sys
 import time
@@ -211,6 +212,90 @@ def _send_messenger(receiver: str, message: str) -> str:
     time.sleep(0.3)
 
     return f"Message sent to {receiver} via Messenger."
+
+
+def start_messenger_call(receiver: str, max_duration_minutes: int = 5) -> str:
+    """Open a Messenger conversation and attempt its audio-call control.
+
+    Messenger's logged-in browser session and UI vary by account and browser,
+    so this is intentionally reported as an attempt rather than a guaranteed
+    connected call. It never claims that Gemini is on the call: this project
+    has no audio bridge from Messenger into the Gemini Live session.
+    """
+    _require_pyautogui()
+    if not _open_browser_url("https://www.messenger.com/"):
+        return "Could not open Messenger for the call attempt."
+
+    _search_in_app(receiver)
+    time.sleep(0.5)
+    pyautogui.press("down")
+    time.sleep(0.3)
+    pyautogui.press("enter")
+    time.sleep(1.5)
+
+    try:
+        from actions.computer_control import _click, _screen_find
+
+        coords = _screen_find("the audio or voice call button for this Messenger conversation")
+        if not coords:
+            return (
+                f"Messenger opened for {receiver}, but the audio-call button "
+                "was not found. No call was started."
+            )
+        _click(x=coords[0], y=coords[1])
+        return (
+            f"Messenger call attempt started for {receiver}. "
+            f"Maximum intended duration: {max(1, int(max_duration_minutes))} minutes. "
+            "Gemini is not connected to the call audio."
+        )
+    except Exception as e:
+        return f"Messenger opened for {receiver}, but the call attempt failed: {e}"
+
+
+def check_whatsapp_response(receiver: str) -> bool | None:
+    """Best-effort visual check for an incoming WhatsApp response.
+
+    Returns True only when Gemini can see an incoming reply in the currently
+    visible conversation. False means it could inspect the screen and did not
+    see one; None means the check was unavailable or uncertain.
+    """
+    _require_pyautogui()
+    try:
+        from google.genai import types as gtypes
+        from core import gemini
+
+        image = pyautogui.screenshot()
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        prompt = (
+            "Inspect this screenshot of a desktop. Determine whether the currently "
+            f"visible WhatsApp conversation with the contact named '{receiver}' "
+            "clearly contains a new incoming reply from that contact after the "
+            "assistant's most recent outgoing message. Reply with exactly YES or "
+            "NO. Reply NO if the conversation is not visible or the result is "
+            "uncertain."
+        )
+        response = gemini.call(
+            [
+                gtypes.Part.from_bytes(
+                    data=buf.getvalue(), mime_type="image/png"
+                ),
+                prompt,
+            ],
+            tier=gemini.FAST,
+            timeout_ms=20_000,
+        )
+        if response is None:
+            return None
+        answer = (response.text or "").strip().upper()
+        if answer.startswith("YES"):
+            return True
+        if answer.startswith("NO"):
+            return False
+    except Exception as e:
+        print(f"[SendMessage] ⚠️ WhatsApp response check unavailable: {e}")
+    return None
+
 
 _PLATFORM_MAP = [
     ({"whatsapp", "wp", "wapp"},              _send_whatsapp),

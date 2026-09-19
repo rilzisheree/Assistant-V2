@@ -40,6 +40,30 @@ directory and passed to the existing file-processing path when requested.
 
 ---
 
+## Reminder Escalation
+
+Normal reminders remain local, one-shot OS notifications. Escalation is
+opt-in: include it only when the user explicitly asks MARK LIV to contact
+someone if the reminder is not acknowledged.
+
+The escalation flow is:
+
+1. Notify the user when the reminder is due.
+2. Wait for an explicit acknowledgement such as “acknowledged” or “done”.
+3. If there is no acknowledgement, send the configured WhatsApp message.
+4. After the contact-response timeout, inspect the visible WhatsApp
+   conversation for a reply.
+5. If no reply is detected, open Messenger and make a best-effort audio-call
+   attempt to the configured contact.
+
+The WhatsApp and Messenger steps use the logged-in desktop applications or
+browser session and therefore require an interactive desktop with PyAutoGUI
+permissions. Reply detection is visual and best-effort. The current project
+does not route Messenger audio into Gemini, so the final step is a call attempt
+and does not claim that a Gemini conversation occurred.
+
+---
+
 ## ✨ Overview
 
 **MARK LIV is the release where JARVIS gets a face.** A holographic head sits at the centre of the HUD and **speaks your assistant's words with real lip-sync** — not a jaw flapping to the volume meter, but actual mouth shapes: lips closing on *m*, *b*, *p*, spreading on *i*, rounding on *u*. Brows ride the sentence, the eyes flick between fixation points, and it blinks. Turn the sound down and you can follow roughly what it just said.
