@@ -1,0 +1,394 @@
+The Remote Control website is STILL completely unreachable.
+
+When I open:
+
+`http://192.168.100.17:8001`
+
+Chrome says:
+
+`ERR_CONNECTION_REFUSED`
+
+Scanning the QR code produces the same result.
+
+Previous attempts to fix the binding, QR code, and firewall did NOT solve it.
+
+### IMPORTANT — DO NOT "FIX" RANDOM THINGS
+
+Do NOT change the UI.
+
+Do NOT redesign anything.
+
+Do NOT change the QR appearance.
+
+Do NOT simply change `localhost` to `0.0.0.0`.
+
+Do NOT simply change the IP.
+
+Do NOT tell me that it "should work."
+
+I want you to **trace the actual connection from the browser all the way to the Remote Control server and identify exactly where it fails.**
+
+---
+
+# PHASE 1 — FIND THE ACTUAL REMOTE CONTROL SERVER
+
+Search the entire project for the code responsible for serving the Remote Control website.
+
+Look for things such as:
+
+* Flask
+* FastAPI
+* Uvicorn
+* aiohttp
+* HTTPServer
+* socketserver
+* Express
+* Node HTTP server
+* WebSocket server
+* `app.run`
+* `uvicorn.run`
+* `listen`
+* `serve`
+* port `8001`
+* Remote Control routes
+* QR generation
+
+Determine:
+
+**Which exact file starts the Remote Control web server?**
+
+**Which exact function starts it?**
+
+**Which exact process hosts it?**
+
+**Which exact port does it actually use?**
+
+Do not assume it is port 8001 just because the QR code says 8001.
+
+---
+
+# PHASE 2 — FIND EVERY REFERENCE TO PORT 8001
+
+Search the entire project for:
+
+`8001`
+
+Report every relevant occurrence.
+
+I want to know whether:
+
+* The backend listens on 8001
+* The frontend expects 8001
+* The QR code uses 8001
+* The WebSocket uses 8001
+* An API uses 8001
+* Another service is supposed to use 8001
+
+Look for mismatches such as:
+
+Frontend → 8001
+Backend → 8000
+
+or:
+
+QR → 8001
+Backend → 8765
+
+or:
+
+Website → one process
+API → another process
+
+---
+
+# PHASE 3 — CHECK THE ACTUAL OPERATING SYSTEM
+
+Do not rely on source code.
+
+Check the actual machine.
+
+Run:
+
+`netstat -ano | findstr LISTENING | findstr :8001`
+
+Also check:
+
+`netstat -ano | findstr :8001`
+
+If nothing appears, then NOTHING is listening on TCP port 8001.
+
+If something appears, identify the PID.
+
+Then determine exactly what application owns that PID.
+
+Also check whether the server is listening on:
+
+`127.0.0.1:8001`
+
+or:
+
+`0.0.0.0:8001`
+
+or:
+
+`192.168.100.17:8001`
+
+or IPv6 only.
+
+---
+
+# PHASE 4 — TEST THE SERVER LOCALLY
+
+From the SAME PC running the AI Assistant, test:
+
+`http://127.0.0.1:8001`
+
+Then:
+
+`http://localhost:8001`
+
+Then:
+
+`http://192.168.100.17:8001`
+
+These three tests are critical.
+
+Record the result of EACH.
+
+### Possible results
+
+If ALL THREE fail:
+
+The Remote Control HTTP server is not running correctly.
+
+If localhost works but `192.168.100.17` fails:
+
+The server binding/network configuration is wrong.
+
+If all THREE work locally but the phone fails:
+
+The problem is between the PC and the LAN device, such as firewall, Wi-Fi isolation, VPN, or network segmentation.
+
+Do not mix these possibilities together.
+
+---
+
+# PHASE 5 — CHECK THE ACTUAL PC IP
+
+Run the appropriate Windows network command and determine the current active IPv4 address.
+
+Confirm whether:
+
+`192.168.100.17`
+
+actually belongs to this PC RIGHT NOW.
+
+If it does not, tell me the actual LAN IPv4 address being used by the PC.
+
+Do not hardcode an old IP.
+
+---
+
+# PHASE 6 — CHECK FIREWALL WITHOUT DISABLING IT
+
+Check whether Windows Firewall has an inbound rule affecting TCP port 8001.
+
+Do NOT disable Windows Firewall.
+
+Do NOT disable Windows Defender.
+
+Do NOT expose the server to the internet.
+
+If necessary, create the minimum inbound LAN rule required for TCP port 8001.
+
+Prefer restricting it to the local/private network rather than allowing arbitrary internet traffic.
+
+---
+
+# PHASE 7 — CHECK THE PHONE/SECOND DEVICE
+
+Determine whether the second device is actually on the same LAN.
+
+Example:
+
+PC:
+
+`192.168.100.17`
+
+Phone:
+
+`192.168.100.xxx`
+
+If the phone is using:
+
+* Guest Wi-Fi
+* AP/client isolation
+* Another VLAN
+* Mobile data
+* VPN
+* A different router/network
+
+then it may not be able to reach the PC.
+
+Do NOT assume that "both are connected to Wi-Fi" means they can communicate.
+
+---
+
+# PHASE 8 — CHECK WHETHER THE WEBSITE IS EVEN THE PROBLEM
+
+This is extremely important.
+
+A browser showing:
+
+`ERR_CONNECTION_REFUSED`
+
+means the TCP connection itself is being refused.
+
+That means the HTML/CSS/JavaScript UI is generally NOT the first thing to debug.
+
+First prove that:
+
+`TCP 192.168.100.17:8001`
+
+is reachable.
+
+Only after that should we investigate the website.
+
+---
+
+# PHASE 9 — CHECK FOR MULTIPLE SERVERS
+
+Look for situations where the project has:
+
+* AI API server
+* Remote Control HTTP server
+* WebSocket server
+* Desktop application
+* Frontend development server
+
+running separately.
+
+Determine whether the QR code is pointing to the WRONG service.
+
+For example, if the actual Remote Control website is running on:
+
+`8000`
+
+but the QR points to:
+
+`8001`
+
+then fix the source of the mismatch.
+
+Do NOT just force another service onto 8001.
+
+---
+
+# PHASE 10 — CHECK STARTUP LIFECYCLE
+
+Inspect how the Remote Control server is launched.
+
+Determine whether it:
+
+* Starts at application launch
+* Starts only when Remote Control is opened
+* Starts in a background thread
+* Starts in a subprocess
+* Starts asynchronously
+* Immediately exits
+* Crashes silently
+* Gets killed when the main UI changes state
+* Fails to start if port 8001 is already occupied
+
+Add clear startup logging if necessary.
+
+I want an unmistakable message such as:
+
+`REMOTE CONTROL SERVER STARTED`
+`LISTENING ON 0.0.0.0:8001`
+
+and an unmistakable error if startup fails.
+
+---
+
+# PHASE 11 — DO NOT REBUILD THE SYSTEM
+
+If the existing Remote Control implementation is present, repair it.
+
+Do NOT replace the entire Remote Control architecture.
+
+Do NOT rewrite the AI Assistant.
+
+Do NOT remove existing APIs.
+
+Do NOT break authentication.
+
+Do NOT change the UI.
+
+Do NOT change the QR design.
+
+Do NOT change unrelated functionality.
+
+---
+
+# FINAL DIAGNOSTIC OUTPUT
+
+Before declaring this fixed, give me a concise diagnostic report:
+
+SERVER PROCESS:
+`________`
+
+SERVER FILE:
+`________`
+
+SERVER PORT:
+`________`
+
+SERVER BIND ADDRESS:
+`________`
+
+PC LAN IP:
+`________`
+
+127.0.0.1:8001:
+`WORKS / FAILS`
+
+localhost:8001:
+`WORKS / FAILS`
+
+192.168.100.17:8001 FROM SAME PC:
+`WORKS / FAILS`
+
+192.168.100.17:8001 FROM PHONE:
+`WORKS / FAILS`
+
+FIREWALL:
+`________`
+
+ROOT CAUSE:
+`________`
+
+FIX APPLIED:
+`________`
+
+Then verify the complete flow:
+
+**PC Remote Control Server**
+→ listening
+
+**PC LAN IP**
+→ reachable
+
+**Phone**
+→ connects to `http://192.168.100.17:8001`
+
+**QR code**
+→ opens the same verified URL
+
+**Remote Control UI**
+→ loads
+
+**AI connection**
+→ works
+
+Do not say "fixed" until the actual TCP connection has been verified.
