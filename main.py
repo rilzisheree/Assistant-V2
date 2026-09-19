@@ -85,9 +85,12 @@ from core.wake_word            import (
 )
 from core.reminder_escalation import (
     acknowledge as acknowledge_reminder,
+    cancel as cancel_reminder_escalation,
+    mark_contact_response as mark_escalation_contact_response,
     mark_call_result as mark_escalation_call_result,
     mark_whatsapp_result as mark_escalation_whatsapp_result,
     poll as poll_reminder_escalations,
+    recover_inflight as recover_reminder_escalations,
 )
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
@@ -1672,11 +1675,17 @@ class JarvisLive:
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
-                                acknowledged = acknowledge_reminder(full_in)
-                                if acknowledged:
+                                cancelled = cancel_reminder_escalation(full_in)
+                                if cancelled:
                                     self.ui.write_log(
-                                        f"SYS: Reminder acknowledged — {acknowledged}"
+                                        f"SYS: Reminder escalation cancelled — {cancelled}"
                                     )
+                                else:
+                                    acknowledged = acknowledge_reminder(full_in)
+                                    if acknowledged:
+                                        self.ui.write_log(
+                                            f"SYS: Reminder acknowledged — {acknowledged}"
+                                        )
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
@@ -2104,6 +2113,9 @@ class JarvisLive:
 
     async def _run_reminder_escalation(self) -> None:
         """Advance explicit reminder escalations independently of Live sessions."""
+        # Never replay an irreversible UI action after a process restart.
+        # In-flight records are moved to verification-only recovery states.
+        await asyncio.to_thread(recover_reminder_escalations)
         while True:
             try:
                 events = await asyncio.to_thread(poll_reminder_escalations)
@@ -2143,7 +2155,7 @@ class JarvisLive:
                         continue
 
                     if kind == "whatsapp_due":
-                        from actions.send_message import send_message
+                        from actions.send_message import send_whatsapp_verified
 
                         contact = str(config.get("whatsapp_contact_name", "")).strip()
                         initial = str(config.get("initial_message", "")).strip()
@@ -2151,23 +2163,71 @@ class JarvisLive:
                             initial = (
                                 f"فكّرتك: {message}. لو شفت الرسالة طمّنّي عليك."
                             )
-                        result = await asyncio.to_thread(
-                            send_message,
-                            {
-                                "receiver": contact,
-                                "message_text": initial,
-                                "platform": "whatsapp",
-                            },
-                            player=self.ui,
+                        result_data = await asyncio.to_thread(
+                            send_whatsapp_verified,
+                            contact,
+                            initial,
                         )
+                        result = str(result_data.get("detail", result_data))
+                        sent = result_data.get("sent") is True
                         await asyncio.to_thread(
                             mark_escalation_whatsapp_result,
                             reminder_id,
                             result,
+                            sent,
+                            initial,
                         )
                         self.ui.write_log(
                             f"SYS: WhatsApp escalation result — {result}"
                         )
+                        continue
+
+                    if kind == "whatsapp_recovery":
+                        from actions.send_message import verify_whatsapp_delivery
+
+                        contact = str(config.get("whatsapp_contact_name", "")).strip()
+                        message_text = str(record.get("whatsapp_message", "")).strip()
+                        result_data = await asyncio.to_thread(
+                            verify_whatsapp_delivery,
+                            contact,
+                            message_text,
+                        )
+                        result = str(result_data.get("detail", result_data))
+                        sent = result_data.get("sent") is True
+                        await asyncio.to_thread(
+                            mark_escalation_whatsapp_result,
+                            reminder_id,
+                            result,
+                            sent,
+                            message_text,
+                        )
+                        self.ui.write_log(f"SYS: WhatsApp escalation — {result}")
+                        continue
+
+                    if kind == "contact_check":
+                        from actions.send_message import check_whatsapp_response
+
+                        contact = str(config.get("whatsapp_contact_name", "")).strip()
+                        initial = str(
+                            record.get("whatsapp_message")
+                            or config.get("initial_message", "")
+                        ).strip()
+                        response_seen = await asyncio.to_thread(
+                            check_whatsapp_response,
+                            contact,
+                            initial,
+                        )
+                        if response_seen is True:
+                            result = (
+                                f"A new response from {contact} was detected in "
+                                "WhatsApp; escalation cancelled."
+                            )
+                            await asyncio.to_thread(
+                                mark_escalation_contact_response,
+                                reminder_id,
+                                result,
+                            )
+                            self.ui.write_log(f"SYS: WhatsApp escalation — {result}")
                         continue
 
                     if kind == "call_due":
@@ -2177,6 +2237,7 @@ class JarvisLive:
                                 mark_escalation_call_result,
                                 reminder_id,
                                 result,
+                                False,
                             )
                             self.ui.write_log(f"SYS: Messenger escalation — {result}")
                             continue
@@ -2189,6 +2250,10 @@ class JarvisLive:
                         response_seen = await asyncio.to_thread(
                             check_whatsapp_response,
                             contact,
+                            str(
+                                record.get("whatsapp_message")
+                                or config.get("initial_message", "")
+                            ).strip(),
                         )
                         if response_seen is True:
                             result = (
@@ -2196,46 +2261,65 @@ class JarvisLive:
                                 "the Messenger call was not started."
                             )
                             await asyncio.to_thread(
-                                mark_escalation_call_result,
+                                mark_escalation_contact_response,
                                 reminder_id,
                                 result,
                             )
                             self.ui.write_log(f"SYS: Messenger escalation — {result}")
                             continue
+                        if response_seen is None:
+                            result = (
+                                "WhatsApp response status could not be verified; "
+                                "Messenger call was not started."
+                            )
+                            await asyncio.to_thread(
+                                mark_escalation_call_result,
+                                reminder_id,
+                                result,
+                                None,
+                                False,
+                            )
+                            self.ui.write_log(f"SYS: Messenger escalation — {result}")
+                            continue
 
-                        from actions.send_message import start_messenger_call
+                        from actions.send_message import start_messenger_call_verified
 
-                        result = await asyncio.to_thread(
-                            start_messenger_call,
+                        result_data = await asyncio.to_thread(
+                            start_messenger_call_verified,
                             str(config.get("messenger_contact_name", "")).strip(),
                             int(config.get("max_call_duration_minutes", 5)),
                         )
+                        result = str(result_data.get("detail", result_data))
+                        connected = result_data.get("connected")
                         await asyncio.to_thread(
                             mark_escalation_call_result,
                             reminder_id,
                             result,
+                            connected,
+                            False,
                         )
                         self.ui.write_log(f"SYS: Messenger escalation — {result}")
-                        if self.session:
-                            try:
-                                await self.session.send_client_content(
-                                    turns={
-                                        "role": "user",
-                                        "parts": [{
-                                            "text": (
-                                                "[REMINDER ESCALATION RESULT]\n"
-                                                f"{result}\n"
-                                                "Report only that a best-effort Messenger "
-                                                "call attempt was made. Do not claim the "
-                                                "call connected or that you spoke unless "
-                                                "the tool result explicitly says so."
-                                            )
-                                        }],
-                                    },
-                                    turn_complete=True,
-                                )
-                            except Exception as e:
-                                print(f"[Reminder] Could not report call result: {e}")
+                        # There is no Messenger/Gemini audio bridge. Do not start
+                        # or claim a Gemini voice session from a browser call.
+                        continue
+
+                    if kind == "call_recovery":
+                        from actions.send_message import verify_messenger_call_connection
+
+                        result_data = await asyncio.to_thread(
+                            verify_messenger_call_connection,
+                            str(config.get("messenger_contact_name", "")).strip(),
+                        )
+                        result = str(result_data.get("detail", result_data))
+                        connected = result_data.get("connected")
+                        await asyncio.to_thread(
+                            mark_escalation_call_result,
+                            reminder_id,
+                            result,
+                            connected,
+                            False,
+                        )
+                        self.ui.write_log(f"SYS: Messenger escalation — {result}")
             except Exception as e:
                 print(f"[Reminder] Escalation monitor error: {e}")
             await asyncio.sleep(1)

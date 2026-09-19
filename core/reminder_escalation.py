@@ -24,8 +24,10 @@ _ACTIVE_STATES = {
     "scheduled",
     "awaiting_user",
     "whatsapp_sending",
+    "whatsapp_verifying",
     "awaiting_contact",
     "call_pending",
+    "call_verifying",
 }
 
 
@@ -132,6 +134,40 @@ def _event(kind: str, record: dict[str, Any]) -> dict[str, Any]:
     return {"type": kind, "record": dict(record)}
 
 
+def recover_inflight() -> None:
+    """Move interrupted UI work to verification-only recovery states.
+
+    Sending another message or starting another call after a process restart
+    could duplicate an irreversible action. Recovery events therefore verify
+    what is already visible and never repeat the action automatically.
+    """
+    with _LOCK:
+        records = _read()
+        changed = False
+        for record in records:
+            state = record.get("state")
+            if state == "whatsapp_sending":
+                record["state"] = "whatsapp_verifying"
+                record["recovery_event_emitted"] = False
+                record["recovery_reason"] = (
+                    "Assistant restarted while WhatsApp work was in progress."
+                )
+                changed = True
+            elif state == "call_pending":
+                record["state"] = "call_verifying"
+                record["recovery_event_emitted"] = False
+                record["recovery_reason"] = (
+                    "Assistant restarted while Messenger call work was in progress."
+                )
+                changed = True
+        if changed:
+            stamp = _now().isoformat()
+            for record in records:
+                if record.get("state") in _ACTIVE_STATES:
+                    record["updated_at"] = stamp
+            _write(records)
+
+
 def poll(now: datetime | None = None) -> list[dict[str, Any]]:
     """Advance due records and return work items for the background loop."""
     now = now or _now()
@@ -158,29 +194,40 @@ def poll(now: datetime | None = None) -> list[dict[str, Any]]:
                     and now >= _parse(record["user_deadline"])
                 ):
                     record["state"] = "whatsapp_sending"
+                    record["work_started_at"] = now.isoformat()
                     events.append(_event("whatsapp_due", record))
+                    changed = True
+                elif state == "whatsapp_verifying" and not record.get(
+                    "recovery_event_emitted"
+                ):
+                    record["recovery_event_emitted"] = True
+                    events.append(_event("whatsapp_recovery", record))
+                    changed = True
+                elif state == "awaiting_contact" and (
+                    now >= _parse(record["contact_deadline"])
+                ):
+                    record["state"] = "call_pending"
+                    record["work_started_at"] = now.isoformat()
+                    events.append(_event("call_due", record))
                     changed = True
                 elif (
                     state == "awaiting_contact"
-                    and now >= _parse(record["contact_deadline"])
+                    and (
+                        not record.get("last_response_check_at")
+                        or now
+                        >= _parse(record["last_response_check_at"])
+                        + timedelta(seconds=10)
+                    )
                 ):
-                    record["state"] = "call_pending"
-                    events.append(_event("call_due", record))
+                    record["last_response_check_at"] = now.isoformat()
+                    events.append(_event("contact_check", record))
                     changed = True
-                elif state == "whatsapp_sending":
-                    # Recover a work item left behind by a process crash, but
-                    # avoid retrying immediately on a healthy process.
-                    started = record.get("work_started_at")
-                    if not started or now >= _parse(started) + timedelta(minutes=5):
-                        events.append(_event("whatsapp_due", record))
-                        record["work_started_at"] = now.isoformat()
-                        changed = True
-                elif state == "call_pending":
-                    started = record.get("work_started_at")
-                    if not started or now >= _parse(started) + timedelta(minutes=5):
-                        events.append(_event("call_due", record))
-                        record["work_started_at"] = now.isoformat()
-                        changed = True
+                elif state == "call_verifying" and not record.get(
+                    "recovery_event_emitted"
+                ):
+                    record["recovery_event_emitted"] = True
+                    events.append(_event("call_recovery", record))
+                    changed = True
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 record["state"] = "failed"
                 record["error"] = f"Invalid escalation state: {exc}"
@@ -206,8 +253,6 @@ def acknowledge(text: str) -> str | None:
         "done",
         "got it",
         "understood",
-        "cancel the reminder",
-        "ignore the reminder",
         "تمام",
         "حاضر",
         "ماشي",
@@ -229,38 +274,134 @@ def acknowledge(text: str) -> str | None:
     return None
 
 
+def cancel(text: str) -> str | None:
+    """Cancel the active escalation without treating cancellation as acknowledgement."""
+    normalized = " ".join((text or "").lower().split())
+    if not normalized:
+        return None
+    markers = (
+        "cancel that reminder",
+        "cancel the reminder",
+        "cancel reminder",
+        "cancel the baba escalation",
+        "cancel baba escalation",
+        "stop the escalation",
+        "stop escalation",
+    )
+    if not any(marker in normalized for marker in markers):
+        return None
+
+    with _LOCK:
+        records = _read()
+        for record in reversed(records):
+            if record.get("state") not in _ACTIVE_STATES:
+                continue
+            stamp = _now().isoformat()
+            record["state"] = "cancelled"
+            record["cancelled_at"] = stamp
+            record["cancel_reason"] = text.strip()
+            record["updated_at"] = stamp
+            _write(records)
+            return str(record.get("id", ""))
+    return None
+
+
 def mark_whatsapp_result(
-    reminder_id: str, result: str, now: datetime | None = None
+    reminder_id: str,
+    result: str,
+    sent: bool,
+    outgoing_message: str = "",
+    now: datetime | None = None,
 ) -> bool:
-    """Store the WhatsApp result and begin the contact-response window."""
+    """Store verified WhatsApp delivery or finish with an explicit failure."""
     now = now or _now()
     with _LOCK:
         records = _read()
         for record in records:
             if record.get("id") != reminder_id:
                 continue
+            if record.get("state") not in {"whatsapp_sending", "whatsapp_verifying"}:
+                return False
             config = normalize_config(record.get("config"))
             record["whatsapp_result"] = str(result)
-            record["state"] = "awaiting_contact"
-            record["contact_deadline"] = (
-                now
-                + timedelta(minutes=config["contact_response_timeout_minutes"])
-            ).isoformat()
+            record["whatsapp_verified"] = bool(sent)
+            if outgoing_message:
+                record["whatsapp_message"] = str(outgoing_message)
+            if sent:
+                record["state"] = "awaiting_contact"
+                record["whatsapp_sent_at"] = now.isoformat()
+                record["contact_deadline"] = (
+                    now
+                    + timedelta(minutes=config["contact_response_timeout_minutes"])
+                ).isoformat()
+            else:
+                record["state"] = "failed"
+                record["error"] = (
+                    "WhatsApp delivery could not be verified: " + str(result)
+                )
             record["updated_at"] = now.isoformat()
             _write(records)
             return True
     return False
 
 
-def mark_call_result(reminder_id: str, result: str) -> bool:
-    """Finish the escalation after the best-effort Messenger call attempt."""
+def mark_contact_response(reminder_id: str, result: str) -> bool:
+    """Finish an escalation after a verified new WhatsApp response."""
     with _LOCK:
         records = _read()
         for record in records:
             if record.get("id") != reminder_id:
                 continue
-            record["state"] = "call_attempted"
+            if record.get("state") not in {"awaiting_contact", "call_pending"}:
+                return False
+            stamp = _now().isoformat()
+            record["state"] = "contact_responded"
+            record["contact_response"] = str(result)
+            record["contact_responded_at"] = stamp
+            record["updated_at"] = stamp
+            _write(records)
+            return True
+    return False
+
+
+def mark_call_result(
+    reminder_id: str,
+    result: str,
+    connected: bool | None,
+    audio_bridge_supported: bool = False,
+) -> bool:
+    """Finish the escalation only after a verified call connection.
+
+    This project has no Messenger-to-Gemini audio bridge. A connected call is
+    therefore recorded as partially failed instead of starting or claiming a
+    Gemini voice session.
+    """
+    with _LOCK:
+        records = _read()
+        for record in records:
+            if record.get("id") != reminder_id:
+                continue
+            if connected is True and audio_bridge_supported:
+                record["state"] = "call_connected"
+            elif connected is True:
+                record["state"] = "partial_failed"
+                result = (
+                    str(result)
+                    + " Messenger connected, but bidirectional "
+                    "Messenger/Gemini audio is unsupported; Gemini was not started."
+                )
+            elif connected is None:
+                record["state"] = "partial_failed"
+                result = (
+                    str(result)
+                    + " Messenger connection was not verifiable; no Gemini "
+                    "voice session was started."
+                )
+            else:
+                record["state"] = "failed"
             record["call_result"] = str(result)
+            record["call_connected"] = connected
+            record["gemini_audio_bridge_supported"] = bool(audio_bridge_supported)
             record["updated_at"] = _now().isoformat()
             _write(records)
             return True

@@ -153,6 +153,104 @@ def _desktop_send(app_name: str, receiver: str, message: str) -> str:
 def _send_whatsapp(receiver: str, message: str) -> str:
     return _desktop_send("WhatsApp", receiver, message)
 
+def _screen_verdict(prompt: str, allowed: tuple[str, ...]) -> str | None:
+    """Use the existing Gemini vision helper for a strict UI verdict."""
+    try:
+        from google.genai import types as gtypes
+        from core import gemini
+
+        image = pyautogui.screenshot()
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        response = gemini.call(
+            [
+                gtypes.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
+                prompt + "\nReply with exactly one of: " + ", ".join(allowed),
+            ],
+            tier=gemini.FAST,
+            timeout_ms=20_000,
+        )
+        if response is None:
+            return None
+        answer = (response.text or "").strip().upper()
+        for value in allowed:
+            if answer.startswith(value.upper()):
+                return value
+    except Exception as e:
+        print(f"[SendMessage] ⚠️ UI verification unavailable: {e}")
+    return None
+
+
+def send_whatsapp_verified(receiver: str, message: str) -> dict:
+    """Send through native WhatsApp and require visual confirmation."""
+    _require_pyautogui()
+    if _get_os() != "windows":
+        return {"sent": False, "detail": "Native Windows WhatsApp is required."}
+    try:
+        if not _open_app("WhatsApp"):
+            return {"sent": False, "detail": "Could not open native WhatsApp."}
+        time.sleep(1.0)
+        _search_in_app(receiver)
+        pyautogui.press("enter")
+        time.sleep(0.8)
+        contact_verdict = _screen_verdict(
+            f"Is native WhatsApp showing the exact contact '{receiver}'? "
+            "Use UNKNOWN unless clearly visible.",
+            ("YES", "NO", "UNKNOWN"),
+        )
+        if contact_verdict != "YES":
+            return {
+                "sent": False,
+                "detail": f"Exact WhatsApp contact was not verified ({contact_verdict or 'UNKNOWN'}).",
+            }
+        _paste_text(message)
+        time.sleep(0.2)
+        pyautogui.press("enter")
+        time.sleep(1.0)
+        sent_verdict = _screen_verdict(
+            f"Was this exact message visibly sent in the native WhatsApp "
+            f"conversation with '{receiver}': {message!r}? Require an outgoing "
+            "bubble and sent/delivered indication; use UNKNOWN if unclear.",
+            ("YES", "NO", "UNKNOWN"),
+        )
+        if sent_verdict == "YES":
+            return {"sent": True, "detail": f"WhatsApp confirmed delivery to {receiver}."}
+        return {
+            "sent": False,
+            "detail": f"WhatsApp delivery was not verified ({sent_verdict or 'UNKNOWN'}).",
+        }
+    except Exception as e:
+        return {"sent": False, "detail": f"WhatsApp escalation failed safely: {e}"}
+
+
+def verify_whatsapp_delivery(receiver: str, message: str) -> dict:
+    """Verify an already-attempted WhatsApp send without sending again."""
+    _require_pyautogui()
+    if _get_os() != "windows":
+        return {"sent": False, "detail": "Native Windows WhatsApp is required."}
+    try:
+        if not _open_app("WhatsApp"):
+            return {"sent": None, "detail": "Could not open WhatsApp for recovery verification."}
+        time.sleep(1.0)
+        _search_in_app(receiver)
+        pyautogui.press("enter")
+        time.sleep(0.8)
+        verdict = _screen_verdict(
+            f"Is native WhatsApp showing the exact contact '{receiver}' with "
+            f"this outgoing message visibly sent and delivered: {message!r}? "
+            "Do not infer success; use UNKNOWN unless clearly visible.",
+            ("YES", "NO", "UNKNOWN"),
+        )
+        if verdict == "YES":
+            return {"sent": True, "detail": f"WhatsApp recovery verified delivery to {receiver}."}
+        return {
+            "sent": False,
+            "detail": f"WhatsApp recovery could not verify delivery ({verdict or 'UNKNOWN'}).",
+        }
+    except Exception as e:
+        return {"sent": None, "detail": f"WhatsApp recovery verification failed safely: {e}"}
+
+
 def _send_telegram(receiver: str, message: str) -> str:
     return _desktop_send("Telegram", receiver, message)
 
@@ -252,7 +350,107 @@ def start_messenger_call(receiver: str, max_duration_minutes: int = 5) -> str:
         return f"Messenger opened for {receiver}, but the call attempt failed: {e}"
 
 
-def check_whatsapp_response(receiver: str) -> bool | None:
+def start_messenger_call_verified(
+    receiver: str, max_duration_minutes: int = 5
+) -> dict:
+    """Start a Messenger call only after verifying contact and connection."""
+    _require_pyautogui()
+    try:
+        if not _open_browser_url("https://www.messenger.com/"):
+            return {"connected": False, "detail": "Could not open Messenger Web."}
+        _search_in_app(receiver)
+        time.sleep(0.5)
+        pyautogui.press("down")
+        time.sleep(0.3)
+        pyautogui.press("enter")
+        time.sleep(1.5)
+        contact_verdict = _screen_verdict(
+            f"Is Messenger Web showing the exact contact '{receiver}'? "
+            "Use UNKNOWN unless clearly visible.",
+            ("YES", "NO", "UNKNOWN"),
+        )
+        if contact_verdict != "YES":
+            return {
+                "connected": False,
+                "detail": f"Exact Messenger contact was not verified ({contact_verdict or 'UNKNOWN'}).",
+            }
+
+        from actions.computer_control import _click, _screen_find
+
+        coords = _screen_find(
+            "the audio or voice call button for this Messenger conversation"
+        )
+        if not coords:
+            return {"connected": False, "detail": "Messenger call control was not found."}
+        _click(x=coords[0], y=coords[1])
+
+        deadline = time.monotonic() + 12.0
+        last_verdict = None
+        while time.monotonic() < deadline:
+            time.sleep(1.5)
+            last_verdict = _screen_verdict(
+                f"Is the Messenger Web call with '{receiver}' clearly connected "
+                "and in progress? Reply CONNECTED only for a connected call, "
+                "NOT_CONNECTED for ringing/failed/ended, or UNKNOWN if unclear.",
+                ("CONNECTED", "NOT_CONNECTED", "UNKNOWN"),
+            )
+            if last_verdict == "CONNECTED":
+                return {
+                    "connected": True,
+                    "detail": (
+                        f"Messenger confirmed connected to {receiver}; intended "
+                        f"maximum duration is {max(1, int(max_duration_minutes))} minutes."
+                    ),
+                }
+            if last_verdict == "NOT_CONNECTED":
+                return {
+                    "connected": False,
+                    "detail": "Messenger call did not reach a connected state.",
+                }
+        return {
+            "connected": None,
+            "detail": (
+                "Messenger call connection could not be verified "
+                f"(verdict: {last_verdict or 'UNKNOWN'})."
+            ),
+        }
+    except Exception as e:
+        return {"connected": False, "detail": f"Messenger call failed safely: {e}"}
+
+
+def verify_messenger_call_connection(receiver: str) -> dict:
+    """Inspect Messenger for an existing call without starting another one."""
+    _require_pyautogui()
+    try:
+        if not _open_browser_url("https://www.messenger.com/"):
+            return {"connected": None, "detail": "Could not open Messenger for recovery verification."}
+        _search_in_app(receiver)
+        time.sleep(0.5)
+        pyautogui.press("down")
+        time.sleep(0.3)
+        pyautogui.press("enter")
+        time.sleep(1.0)
+        verdict = _screen_verdict(
+            f"Is the existing Messenger Web call with exact contact '{receiver}' "
+            "clearly connected and in progress? Do not click anything. Reply "
+            "CONNECTED, NOT_CONNECTED, or UNKNOWN.",
+            ("CONNECTED", "NOT_CONNECTED", "UNKNOWN"),
+        )
+        return {
+            "connected": (
+                True if verdict == "CONNECTED"
+                else False if verdict == "NOT_CONNECTED"
+                else None
+            ),
+            "detail": f"Messenger recovery call verdict: {verdict or 'UNKNOWN'}.",
+        }
+    except Exception as e:
+        return {"connected": None, "detail": f"Messenger recovery failed safely: {e}"}
+
+
+def check_whatsapp_response(
+    receiver: str, outgoing_message: str = ""
+) -> bool | None:
     """Best-effort visual check for an incoming WhatsApp response.
 
     Returns True only when Gemini can see an incoming reply in the currently
@@ -269,11 +467,16 @@ def check_whatsapp_response(receiver: str) -> bool | None:
         image.save(buf, format="PNG")
         prompt = (
             "Inspect this screenshot of a desktop. Determine whether the currently "
-            f"visible WhatsApp conversation with the contact named '{receiver}' "
-            "clearly contains a new incoming reply from that contact after the "
-            "assistant's most recent outgoing message. Reply with exactly YES or "
-            "NO. Reply NO if the conversation is not visible or the result is "
-            "uncertain."
+            f"visible WhatsApp conversation with the exact contact named '{receiver}' "
+            "clearly contains a NEW incoming reply from that contact after the "
+            "current escalation's outgoing message. Do not count older replies "
+            "above the outgoing message. "
+            + (
+                f"The current outgoing message text is {outgoing_message!r}. "
+                if outgoing_message else ""
+            )
+            + "Reply with exactly YES or NO. Reply NO if the conversation is not "
+            "visible or the result is uncertain."
         )
         response = gemini.call(
             [
