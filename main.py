@@ -593,6 +593,7 @@ class JarvisLive:
         self._resume_handle: str | None = None
         self._turn_done_event: asyncio.Event | None = None
         self._dashboard     = None
+        self._dashboard_task = None
         self._briefing_sent    = False          # morning briefing fires once per process
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
@@ -2036,6 +2037,21 @@ class JarvisLive:
         self.ui.write_log("SYS: Phone connected via Remote Dashboard.")
         self.ui.notify_phone_connected()
 
+    def _dashboard_task_done(self, task: asyncio.Task) -> None:
+        """Keep a failed background dashboard task from disappearing silently."""
+        if task.cancelled():
+            return
+        try:
+            error = task.exception()
+        except Exception as exc:
+            error = exc
+        if error is not None:
+            print(f"[REMOTE CONTROL] Dashboard task stopped: {error}", flush=True)
+            try:
+                self.ui.write_log(f"ERR: Remote Control server stopped: {error}")
+            except Exception:
+                pass
+
     # ── dashboard command relay ─────────────────────────────────────────────
 
     async def _process_dashboard_commands(self) -> None:
@@ -2095,17 +2111,26 @@ class JarvisLive:
         # for host-API enumeration on the Qt thread.
         audio_devices.prefetch()
 
-        # Start dashboard (optional — needs: pip install fastapi "uvicorn[standard]" cryptography)
+        # Start the existing dashboard before waiting for the API key. This keeps
+        # Remote Control available during normal desktop initialization and makes
+        # its lifecycle independent of the first Gemini connection.
         try:
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
-            asyncio.create_task(self._dashboard.serve())
+            self._dashboard_task = asyncio.create_task(
+                self._dashboard.serve(), name="remote-control-server"
+            )
+            self._dashboard_task.add_done_callback(self._dashboard_task_done)
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())
         except Exception as e:
-            print(f"[Dashboard] Disabled: {e}")
+            print(f"[REMOTE CONTROL] Dashboard startup FAILED: {e}", flush=True)
             self._dashboard = None
+
+        # The API-key dialog is owned by the Qt thread. Waiting in a worker
+        # thread keeps the event loop alive so the dashboard can bind first.
+        await asyncio.to_thread(self.ui.wait_for_api_key)
 
         while True:
             try:
@@ -2299,7 +2324,6 @@ def main():
     ui = JarvisUI("face.png")
 
     def runner():
-        ui.wait_for_api_key()
         jarvis = JarvisLive(ui)
         try:
             asyncio.run(jarvis.run())

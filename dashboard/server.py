@@ -469,6 +469,9 @@ class DashboardServer:
         self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
         self._uploads_dir                 = UPLOADS_DIR
+        self._serve_started               = False
+        self._primary_server              = None
+        self._alias_server                = None
         self._login_html                  = _read("login.html")
         self._app_html                    = _read("app.html")
         self.app                          = self._build_app()
@@ -844,6 +847,20 @@ class DashboardServer:
 
     # ── serve ─────────────────────────────────────────────────────────────
 
+    async def _serve_uvicorn(self, cfg, label: str, server_attr: str) -> None:
+        """Run one Uvicorn listener and report bind failures explicitly."""
+        server = uvicorn.Server(cfg)
+        setattr(self, server_attr, server)
+        try:
+            await server.startup()
+            if not server.started:
+                raise RuntimeError(f"Uvicorn did not report {label} as started")
+            print(f"[REMOTE CONTROL] Dashboard listening on {label}", flush=True)
+            await server.main_loop()
+        finally:
+            await server.shutdown()
+            setattr(self, server_attr, None)
+
     async def _serve_alias(self) -> None:
         """Second HTTPS server on PORT+1 sharing the same app and in-memory state.
         Chrome HTTPS-upgrades any bare IP:PORT the user types, so this port also needs TLS.
@@ -856,33 +873,52 @@ class DashboardServer:
             ssl_keyfile=str(ssl_key), ssl_certfile=str(ssl_cert),
         )
         print(f"[Dashboard] Manual entry:  {self._ip}:{PORT + 1}  (type in browser, accept cert once)")
-        await uvicorn.Server(cfg).serve()
+        await self._serve_uvicorn(cfg, f"0.0.0.0:{PORT + 1} (HTTPS alias)",
+                                  "_alias_server")
 
     async def serve(self) -> None:
+        if self._serve_started:
+            print("[REMOTE CONTROL] Dashboard startup skipped: already started.", flush=True)
+            return
+        self._serve_started = True
+        print("[REMOTE CONTROL] Starting dashboard server...", flush=True)
+
         if not _DEPS_OK:
-            print("[Dashboard] fastapi/uvicorn not installed — dashboard disabled.")
+            print("[REMOTE CONTROL] Dashboard startup FAILED: fastapi/uvicorn not installed.",
+                  flush=True)
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
-        # Firewall setup runs in a thread — uvicorn starts immediately,
-        # no waiting for UAC dialogs or subprocess timeouts.
-        asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT)
+        try:
+            # Firewall setup runs in a thread — uvicorn starts immediately,
+            # no waiting for UAC dialogs or subprocess timeouts.
+            asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT)
 
-        # Keep the primary endpoint plain HTTP so it matches the LAN URL shown
-        # to users and encoded by the QR code. If certificates already exist,
-        # retain the legacy HTTPS compatibility alias on PORT + 1, but do not
-        # make the primary HTTP endpoint depend on TLS setup.
-        use_ssl  = self._ssl_enabled()
-        ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
-        ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
+            # Keep the primary endpoint plain HTTP so it matches the LAN URL shown
+            # to users and encoded by the QR code. If certificates already exist,
+            # retain the legacy HTTPS compatibility alias on PORT + 1, but do not
+            # make the primary HTTP endpoint depend on TLS setup.
+            use_ssl  = self._ssl_enabled()
+            ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
+            ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
 
-        if use_ssl:
-            asyncio.create_task(self._serve_alias())
+            if use_ssl:
+                asyncio.create_task(self._serve_alias())
 
-        cfg = uvicorn.Config(
-            self.app, host="0.0.0.0", port=PORT, log_level="warning",
-        )
+            cfg = uvicorn.Config(
+                self.app, host="0.0.0.0", port=PORT, log_level="warning",
+            )
 
-        print(f"[Dashboard] http://{self._ip}:{PORT}")
-        print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.")
-        await uvicorn.Server(cfg).serve()
+            print(f"[Dashboard] http://{self._ip}:{PORT}", flush=True)
+            print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.",
+                  flush=True)
+            await self._serve_uvicorn(cfg, f"0.0.0.0:{PORT}", "_primary_server")
+        except Exception as exc:
+            print(f"[REMOTE CONTROL] Dashboard startup FAILED: {exc}", flush=True)
+            raise
+
+    async def shutdown(self) -> None:
+        """Ask all dashboard listeners to stop before the app event loop exits."""
+        for server in (self._primary_server, self._alias_server):
+            if server is not None:
+                server.should_exit = True

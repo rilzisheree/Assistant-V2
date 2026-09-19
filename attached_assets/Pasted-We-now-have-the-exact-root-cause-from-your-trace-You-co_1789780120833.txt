@@ -1,0 +1,178 @@
+We now have the exact root cause from your trace.
+
+You confirmed:
+
+* `dashboard/server.py` contains the Remote Control server.
+* `DashboardServer.serve()` starts Uvicorn on `0.0.0.0:8001`.
+* The Remote Control server is created inside `JarvisLive.run()`.
+* The current environment has **no process listening on 8001**.
+* There is **no configured workflow currently starting the dashboard**.
+* The QR/manual URL and server port are already correctly using `8001`.
+
+So **DO NOT change the QR code, port, URL, UI, or networking configuration again.**
+
+The missing piece is making sure the existing `DashboardServer` actually gets started when the normal Windows AI Assistant application starts.
+
+### FIX THE ACTUAL LIFECYCLE
+
+Inspect:
+
+`JarvisLive.run()`
+
+and trace exactly where:
+
+`DashboardServer(...)`
+
+and:
+
+`DashboardServer.serve()`
+
+are called.
+
+Determine why the normal AI Assistant launch is not resulting in an active listener on:
+
+`0.0.0.0:8001`
+
+Then fix that lifecycle.
+
+### REQUIREMENT
+
+When I launch my normal AI Assistant application on Windows, the existing Remote Control server must automatically start.
+
+The desired lifecycle is:
+
+AI Assistant launches
+→ normal initialization
+→ `JarvisLive` starts
+→ existing `DashboardServer` starts
+→ Uvicorn listens on `0.0.0.0:8001`
+→ Remote Control website becomes available at:
+
+`http://192.168.100.17:8001`
+
+### IMPORTANT
+
+Do NOT require me to manually run a second Python command every time.
+
+Do NOT require me to manually start the dashboard separately.
+
+Do NOT create a separate replacement server.
+
+Do NOT create a second Remote Control implementation.
+
+Use the existing `DashboardServer`.
+
+### BACKGROUND THREAD / NON-BLOCKING
+
+If `DashboardServer.serve()` is a blocking Uvicorn call, make sure it is started in the appropriate background thread/task/process so it does NOT freeze or prevent the existing AI Assistant desktop UI from starting.
+
+The desktop application and Remote Control server must run simultaneously.
+
+For example conceptually:
+
+Desktop UI
+├── AI Assistant
+└── Remote Control server :8001
+
+Do not block the main UI thread.
+
+### STARTUP SAFETY
+
+The server should:
+
+* Start exactly once.
+* Not create duplicate listeners.
+* Detect if it is already running.
+* Handle startup exceptions visibly.
+* Shut down cleanly when the main application exits.
+* Not interfere with the AI Assistant UI.
+
+Add clear logging:
+
+`[REMOTE CONTROL] Starting dashboard server...`
+
+Then on success:
+
+`[REMOTE CONTROL] Dashboard listening on 0.0.0.0:8001`
+
+If startup fails:
+
+`[REMOTE CONTROL] Dashboard startup FAILED: <actual exception>`
+
+Do NOT silently swallow the exception.
+
+### IMPORTANT — CHECK INITIALIZATION ORDER
+
+The trace says the server is created after the desktop UI and API-key initialization.
+
+Make sure the dashboard startup does not accidentally depend on something that prevents it from starting.
+
+If `JarvisLive.run()` only executes after a condition, button click, API-key screen, or another initialization step, determine whether that is why the server never starts.
+
+Preserve the application's existing initialization behavior unless it is specifically preventing the dashboard from starting.
+
+### DO NOT CHANGE
+
+Do not modify:
+
+* Remote Control UI
+* Central orb
+* Main AI UI
+* Activity Log
+* Command bar
+* Microphone
+* File upload
+* QR appearance
+* AI functionality
+* Existing API routes
+* Existing WebSocket behavior
+* Authentication
+* Dark blue theme
+* Any unrelated functionality
+
+This is strictly a **server startup/lifecycle fix**.
+
+### VERIFY THE FIX
+
+After making the change, inspect the resulting startup flow.
+
+The expected behavior is:
+
+Launch AI Assistant
+→ `JarvisLive.run()`
+→ `DashboardServer` starts
+→ Uvicorn binds `0.0.0.0:8001`
+
+Then the Windows machine should show:
+
+`TCP 0.0.0.0:8001 LISTENING`
+
+and:
+
+`http://127.0.0.1:8001`
+
+should load locally.
+
+Then:
+
+`http://192.168.100.17:8001`
+
+should load from the PC.
+
+Finally, a phone on the same LAN should be able to open:
+
+`http://192.168.100.17:8001`
+
+### VERY IMPORTANT
+
+The previous diagnosis is already complete.
+
+I do NOT need another report saying:
+
+> "Nothing is listening on port 8001."
+
+We already know that.
+
+I need you to **modify the existing application lifecycle so that the existing DashboardServer actually starts when I launch the AI Assistant.**
+
+If you cannot execute the Windows machine itself from this environment, still make the source-code fix and clearly identify the exact file/function changed so I can run the Windows application and verify the listener.
